@@ -14,18 +14,21 @@ import '../models/dependency_info.dart';
 import '../models/flutter_project_info.dart';
 import '../providers/project_info_provider.dart';
 
-/// Apre il file nel file manager di sistema (Finder su macOS, Explorer su Windows, ecc.).
-Future<void> revealInFinder(String path) async {
-  final file = File(path);
-  if (!file.existsSync()) return;
+/// Apre il file o la cartella nel file manager di sistema (Finder su macOS, Explorer su Windows, ecc.).
+/// Restituisce [true] se il path esiste e il comando è stato avviato, [false] altrimenti.
+Future<bool> revealInFinder(String path) async {
+  final normalized = path.replaceAll(RegExp(r'/+'), '/').replaceFirst(RegExp(r'/$'), '');
+  final exists = File(normalized).existsSync() || Directory(normalized).existsSync();
+  if (!exists) return false;
   if (Platform.isMacOS) {
-    await Process.run('open', ['-R', path]);
+    await Process.run('open', ['-R', normalized]);
   } else if (Platform.isWindows) {
-    await Process.run('explorer', ['/select,', path]);
+    await Process.run('explorer', ['/select,', normalized]);
   } else {
-    final dir = File(path).parent.path;
+    final dir = File(normalized).existsSync() ? File(normalized).parent.path : normalized;
     await Process.run('xdg-open', [dir]);
   }
+  return true;
 }
 
 /// Restituisce i testi delle sezioni per la tab [tabIndex], usati per la ricerca (Cmd+F).
@@ -742,6 +745,9 @@ class _ProjectReleaseTabBody extends StatefulWidget {
 
 /// Prefs: JSON map projectPath -> (buildKey -> seconds), e.g. {"path": {"prod:android": 120}}.
 const _prefsKeyLastBuildDurations = 'release_last_build_durations';
+/// Prefs: JSON map projectPath -> (buildKey -> output). Output troncato a _maxCachedConsoleChars.
+const _prefsKeyConsoleOutputs = 'release_console_outputs';
+const _maxCachedConsoleChars = 50000;
 
 /// Formatta una durata in secondi in testo breve (es. "2 min", "45 sec").
 String _formatBuildDuration(int totalSeconds) {
@@ -791,8 +797,9 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
   final Map<String, int> _lastBuildDurationByKey = {};
   /// Path dell'artefatto (APK o cartella IPA) dopo build riuscita, per chiave envName:platform.
   final Map<String, String> _lastBuiltArtifactPaths = {};
-  String _consoleOutput = '';
-  final ScrollController _consoleScrollController = ScrollController();
+  /// Output console per buildKey (env:platform). In memoria e in cache (prefs).
+  final Map<String, String> _consoleOutputByKey = {};
+  final Map<String, ScrollController> _consoleScrollControllers = {};
 
   List<String> get _envs => _releaseEnvironmentNames(widget.info);
   bool get _hasIos => widget.info.platforms.contains(_platformIos);
@@ -801,35 +808,84 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
   bool _isRunning(String envName, String platform) => _runningBuilds.contains(_buildKey(envName, platform));
   int? _elapsedFor(String envName, String platform) => _elapsedSecondsByKey[_buildKey(envName, platform)];
 
+  List<String> get _allBuildKeys {
+    final keys = <String>[];
+    for (final env in _envs) {
+      keys.add(_buildKey(env, _platformAndroid));
+      if (_hasIos) keys.add(_buildKey(env, _platformIos));
+    }
+    return keys;
+  }
+
   @override
   void initState() {
     super.initState();
     _loadLastBuildDuration();
+    _loadCachedConsoles();
+    for (final k in _allBuildKeys) {
+      _consoleScrollControllers[k] = ScrollController();
+    }
   }
 
   @override
   void dispose() {
     _buildTimer?.cancel();
-    _consoleScrollController.dispose();
+    for (final c in _consoleScrollControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  void _appendConsole(String text) {
+  void _appendConsole(String buildKey, String text) {
     if (!mounted) return;
-    setState(() => _consoleOutput += text);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_consoleScrollController.hasClients) {
-        _consoleScrollController.animateTo(
-          _consoleScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    setState(() => _consoleOutputByKey[buildKey] = (_consoleOutputByKey[buildKey] ?? '') + text);
+    final controller = _consoleScrollControllers[buildKey];
+    if (controller != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (controller.hasClients) {
+          controller.animateTo(
+            controller.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
   }
 
-  void _clearConsole() {
-    setState(() => _consoleOutput = '');
+  void _clearConsoleFor(String buildKey) {
+    setState(() => _consoleOutputByKey[buildKey] = '');
+    _saveCachedConsoles();
+  }
+
+  Future<void> _loadCachedConsoles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = prefs.getString(_prefsKeyConsoleOutputs);
+    if (json == null) return;
+    try {
+      final top = jsonDecode(json) as Map<String, dynamic>?;
+      final byKey = top?[widget.projectPath] as Map<String, dynamic>?;
+      if (byKey == null) return;
+      final map = <String, String>{};
+      for (final e in byKey.entries) {
+        if (e.value is String) map[e.key] = e.value as String;
+      }
+      if (mounted) setState(() => _consoleOutputByKey.addAll(map));
+    } catch (_) {}
+  }
+
+  Future<void> _saveCachedConsoles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = prefs.getString(_prefsKeyConsoleOutputs);
+    final top = (json != null ? (jsonDecode(json) as Map<String, dynamic>?) : null) ?? <String, dynamic>{};
+    final byKey = <String, dynamic>{};
+    for (final e in _consoleOutputByKey.entries) {
+      final s = e.value;
+      if (s.isEmpty) continue;
+      byKey[e.key] = s.length > _maxCachedConsoleChars ? s.substring(s.length - _maxCachedConsoleChars) : s;
+    }
+    top[widget.projectPath] = byKey;
+    await prefs.setString(_prefsKeyConsoleOutputs, jsonEncode(top));
   }
 
   Future<void> _loadLastBuildDuration() async {
@@ -879,12 +935,15 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
     }
   }
 
-  Future<void> _saveLastBuildDuration(String buildKey, int seconds) async {
+  /// Persiste l'intera mappa _lastBuildDurationByKey per il progetto corrente (tutti i buildKey).
+  Future<void> _saveAllLastBuildDurations() async {
     final prefs = await SharedPreferences.getInstance();
     final json = prefs.getString(_prefsKeyLastBuildDurations);
     final top = (json != null ? (jsonDecode(json) as Map<String, dynamic>?) : null) ?? <String, dynamic>{};
-    final byKey = (top[widget.projectPath] as Map<String, dynamic>?) ?? <String, dynamic>{};
-    byKey[buildKey] = seconds;
+    final byKey = <String, dynamic>{};
+    for (final e in _lastBuildDurationByKey.entries) {
+      byKey[e.key] = e.value;
+    }
     top[widget.projectPath] = byKey;
     await prefs.setString(_prefsKeyLastBuildDurations, jsonEncode(top));
   }
@@ -949,7 +1008,7 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
     setState(() {
       _runningBuilds.add(buildKey);
       _startBuildTimer(buildKey);
-      _consoleOutput = '';
+      _consoleOutputByKey[buildKey] = '';
     });
     final stopwatch = Stopwatch()..start();
 
@@ -971,8 +1030,8 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
         process = await Process.start(executable, args, workingDirectory: widget.projectPath, runInShell: false);
       }
 
-      process.stdout.transform(utf8.decoder).listen((data) => _appendConsole(data));
-      process.stderr.transform(utf8.decoder).listen((data) => _appendConsole(data));
+      process.stdout.transform(utf8.decoder).listen((data) => _appendConsole(buildKey, data));
+      process.stderr.transform(utf8.decoder).listen((data) => _appendConsole(buildKey, data));
 
       final exitCode = await process.exitCode;
       stopwatch.stop();
@@ -983,17 +1042,19 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
       _stopBuildTimer(buildKey);
 
       if (exitCode == 0) {
-        await _saveLastBuildDuration(buildKey, durationSeconds);
         if (mounted)
           setState(() {
             _lastBuildDurationByKey[buildKey] = durationSeconds;
             _lastBuiltArtifactPaths[buildKey] = _builtArtifactPath(widget.projectPath, platform, flavorArg);
           });
+        await _saveAllLastBuildDurations();
       }
 
       _appendConsole(
+        buildKey,
         '\n${exitCode == 0 ? t(context, 'release.done') : t(context, 'release.error')} (exit $exitCode)\n',
       );
+      await _saveCachedConsoles();
 
       final ok = exitCode == 0;
       final platformLabel = platform == _platformIos ? 'iOS' : 'Android';
@@ -1005,7 +1066,8 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
       );
     } catch (e) {
       stopwatch.stop();
-      _appendConsole('\n${t(context, 'release.error')}: $e\n');
+      _appendConsole(buildKey, '\n${t(context, 'release.error')}: $e\n');
+      await _saveCachedConsoles();
       if (mounted) {
         setState(() => _runningBuilds.remove(buildKey));
         _stopBuildTimer(buildKey);
@@ -1030,7 +1092,7 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
             style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
-        ..._envs.map((env) {
+        ..._envs.expand((env) {
           final card = _ReleaseEnvCard(
             envName: env,
             hasIos: _hasIos,
@@ -1048,15 +1110,36 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
           final wrapped = widget.sectionKeys != null && sectionIndex < widget.sectionKeys!.length
               ? KeyedSubtree(key: widget.sectionKeys![sectionIndex++], child: card)
               : card;
-          return Padding(padding: const EdgeInsets.only(bottom: 12), child: wrapped);
+          final androidKey = _buildKey(env, _platformAndroid);
+          final iosKey = _buildKey(env, _platformIos);
+          final androidController = _consoleScrollControllers[androidKey];
+          final iosController = _hasIos ? _consoleScrollControllers[iosKey] : null;
+          return [
+            Padding(padding: const EdgeInsets.only(bottom: 12), child: wrapped),
+            if (androidController != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: _ReleaseConsole(
+                  title: '$env · ${t(context, 'release.platformAndroid')}',
+                  output: _consoleOutputByKey[androidKey] ?? '',
+                  scrollController: androidController,
+                  isBuilding: _runningBuilds.contains(androidKey),
+                  onClear: () => _clearConsoleFor(androidKey),
+                ),
+              ),
+            if (iosController != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: _ReleaseConsole(
+                  title: '$env · ${t(context, 'release.platformIos')}',
+                  output: _consoleOutputByKey[iosKey] ?? '',
+                  scrollController: iosController,
+                  isBuilding: _runningBuilds.contains(iosKey),
+                  onClear: () => _clearConsoleFor(iosKey),
+                ),
+              ),
+          ];
         }),
-        const SizedBox(height: 16),
-        _ReleaseConsole(
-          output: _consoleOutput,
-          scrollController: _consoleScrollController,
-          isBuilding: _runningBuilds.isNotEmpty,
-          onClear: _clearConsole,
-        ),
       ],
     );
   }
@@ -1130,7 +1213,14 @@ class _ReleaseEnvCard extends StatelessWidget {
                 if (androidArtifactPath != null && !isBuildingAndroid) ...[
                   const SizedBox(width: 4),
                   IconButton.filledTonal(
-                    onPressed: () => revealInFinder(androidArtifactPath!),
+                    onPressed: () async {
+                      final opened = await revealInFinder(androidArtifactPath!);
+                      if (context.mounted && !opened) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(t(context, 'release.artifactNotFound')), backgroundColor: Colors.orange.shade700),
+                        );
+                      }
+                    },
                     icon: const Icon(Icons.folder_open, size: 20),
                     tooltip: t(context, 'release.showInFinder'),
                     style: IconButton.styleFrom(
@@ -1154,7 +1244,14 @@ class _ReleaseEnvCard extends StatelessWidget {
                   if (iosArtifactPath != null && !isBuildingIos) ...[
                     const SizedBox(width: 4),
                     IconButton.filledTonal(
-                      onPressed: () => revealInFinder(iosArtifactPath!),
+                      onPressed: () async {
+                        final opened = await revealInFinder(iosArtifactPath!);
+                        if (context.mounted && !opened) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(t(context, 'release.artifactNotFound')), backgroundColor: Colors.orange.shade700),
+                          );
+                        }
+                      },
                       icon: const Icon(Icons.folder_open, size: 20),
                       tooltip: t(context, 'release.showInFinder'),
                       style: IconButton.styleFrom(
@@ -1206,15 +1303,17 @@ class _ReleaseEnvCard extends StatelessWidget {
   }
 }
 
-/// Mini console che mostra l'output del comando di build in tempo reale.
+/// Mini console che mostra l'output del comando di build in tempo reale (una per buildKey).
 class _ReleaseConsole extends StatelessWidget {
   const _ReleaseConsole({
+    required this.title,
     required this.output,
     required this.scrollController,
     required this.isBuilding,
     required this.onClear,
   });
 
+  final String title;
   final String output;
   final ScrollController scrollController;
   final bool isBuilding;
@@ -1235,14 +1334,22 @@ class _ReleaseConsole extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                t(context, 'release.consoleTitle'),
+                title,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            if (isBuilding)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
+                ),
+              ),
             if (!isBuilding && output.isNotEmpty)
               TextButton.icon(
                 onPressed: onClear,

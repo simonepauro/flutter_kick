@@ -112,6 +112,7 @@
     "confirmRun": "Run",
     "confirmCancel": "Cancel",
     "showInFinder": "Show in Finder",
+    "artifactNotFound": "File or folder not found. Run a build first.",
     "done": "Build completed",
     "error": "Build failed"
   },
