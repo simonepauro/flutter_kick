@@ -9,20 +9,28 @@ import '../models/flutter_project_info.dart';
 
 const _logName = 'ProjectInfoService';
 
+/// Voce launcher grezza dal manifest Android (prima di assegnare isMain).
+class _AndroidLauncherRaw {
+  const _AndroidLauncherRaw({required this.iconRef, this.label, required this.isActivity, required this.enabled});
+  final String iconRef;
+  final String? label;
+  final bool isActivity;
+  final bool enabled;
+}
+
+/// Voce launcher dal manifest con flag principale (per UI).
+class _AndroidLauncherEntry {
+  const _AndroidLauncherEntry({required this.iconRef, this.label, required this.isMain});
+  final String iconRef;
+  final String? label;
+  final bool isMain;
+}
+
 /// Pattern per nomi flavor in build.gradle (Groovy/KTS): "flavorName" { oppure create("flavorName")
-final _androidFlavorNameRegex = RegExp(
-  r'(?:create\s*\(\s*["\x27](\w+)["\x27]\s*\)|["\x27](\w+)["\x27]\s*)\s*\{',
-);
+final _androidFlavorNameRegex = RegExp(r'(?:create\s*\(\s*["\x27](\w+)["\x27]\s*\)|["\x27](\w+)["\x27]\s*)\s*\{');
 
 /// Nomi delle cartelle che indicano le piattaforme supportate.
-const List<String> _platformDirs = [
-  'android',
-  'ios',
-  'web',
-  'macos',
-  'windows',
-  'linux',
-];
+const List<String> _platformDirs = ['android', 'ios', 'web', 'macos', 'windows', 'linux'];
 
 /// Servizio che legge un progetto Flutter e ne estrae le informazioni.
 class ProjectInfoService {
@@ -64,7 +72,10 @@ class ProjectInfoService {
 
     final dependencies = _dependencyEntries(doc['dependencies']);
     final devDependencies = _dependencyEntries(doc['dev_dependencies']);
-    developer.log('load: dependencies=${dependencies.length}, devDependencies=${devDependencies.length}', name: _logName);
+    developer.log(
+      'load: dependencies=${dependencies.length}, devDependencies=${devDependencies.length}',
+      name: _logName,
+    );
 
     final platforms = await _detectPlatforms(dir.path);
     final androidEnvFiles = await _detectEnvFilesForPlatform(dir.path, 'android');
@@ -74,9 +85,16 @@ class ProjectInfoService {
     final envScripts = await _detectEnvScripts(dir.path);
     final firebaseEnvs = await _detectFirebaseEnvs(dir.path);
     final dartEnvSourceFiles = await _detectDartEnvSourceFiles(dir.path);
+    final (launchJsonPath, launchConfigurations) = await _readLaunchJson(dir.path);
     final flutterVersion = await _getFlutterVersion(dir.path);
-    final iosAppIconPath = await _detectIosAppIcon(dir.path);
-    final androidAppIconPath = await _detectAndroidAppIcon(dir.path);
+    final iosAppIcons = await _detectIosAppIcons(dir.path);
+    final androidAppIcons = await _detectAndroidAppIcons(dir.path);
+    final iosAppIconPath = iosAppIcons.isNotEmpty
+        ? iosAppIcons.firstWhere((e) => e.isMain, orElse: () => iosAppIcons.first).path
+        : null;
+    final androidAppIconPath = androidAppIcons.isNotEmpty
+        ? androidAppIcons.firstWhere((e) => e.isMain, orElse: () => androidAppIcons.first).path
+        : null;
     final iosSplashPath = await _detectIosSplash(dir.path);
     final androidSplashPath = await _detectAndroidSplash(dir.path);
     final iosBuildSettings = await _readIosBuildSettings(dir.path);
@@ -104,8 +122,12 @@ class ProjectInfoService {
       envScripts: envScripts,
       firebaseEnvs: firebaseEnvs,
       dartEnvSourceFiles: dartEnvSourceFiles,
+      launchJsonPath: launchJsonPath,
+      launchConfigurations: launchConfigurations,
       iosAppIconPath: iosAppIconPath,
       androidAppIconPath: androidAppIconPath,
+      iosAppIcons: iosAppIcons,
+      androidAppIcons: androidAppIcons,
       iosSplashPath: iosSplashPath,
       androidSplashPath: androidSplashPath,
       iosBuildSettings: iosBuildSettings,
@@ -205,18 +227,62 @@ class ProjectInfoService {
   void _extractAndroidSigningKts(String content, Map<String, String> out) {
     final signingBlock = _extractBlock(content, 'signingConfigs');
     if (signingBlock == null) return;
-    final releaseMatch = RegExp(r'getByName\s*\(\s*[\x22\x27]release[\x22\x27]\s*\)\s*\{([^}]+)\}').firstMatch(signingBlock);
-    final block = releaseMatch?.group(1) ?? signingBlock;
-    _extractKtsSigningEntry(block, out);
-    if (out.isEmpty) {
-      final createMatch = RegExp(r'create\s*\(\s*[\x22\x27]\w+[\x22\x27]\s*\)\s*\{([^}]+)\}').firstMatch(signingBlock);
-      if (createMatch != null) _extractKtsSigningEntry(createMatch.group(1)!, out);
+    // Try named configs in order: release, production (usati per build release/flavor)
+    for (final name in ['release', 'production']) {
+      final pattern = RegExp(
+        r'(?:getByName|create)\s*\(\s*[\x22\x27]' + name + r'[\x22\x27]\s*\)\s*\{',
+        caseSensitive: false,
+      );
+      final match = pattern.firstMatch(signingBlock);
+      if (match != null) {
+        final start = match.end - 1; // index of '{'
+        final block = _extractBalancedBraces(signingBlock, start);
+        if (block != null) {
+          _extractKtsSigningEntry(block, out);
+          if (out.isNotEmpty) return;
+        }
+      }
+    }
+    // Try any create("...") { ... } block (brace-balanced per blocchi annidati)
+    final createRegex = RegExp(r'create\s*\(\s*[\x22\x27]\w+[\x22\x27]\s*\)\s*\{');
+    for (final match in createRegex.allMatches(signingBlock)) {
+      final block = _extractBalancedBraces(signingBlock, match.end - 1);
+      if (block != null) {
+        _extractKtsSigningEntry(block, out);
+        if (out.isNotEmpty) return;
+      }
     }
   }
 
+  /// Restituisce il contenuto tra la parentesi graffa aperta in [content] a [openBraceIndex] e la sua '}' di chiusura.
+  String? _extractBalancedBraces(String content, int openBraceIndex) {
+    if (openBraceIndex >= content.length || content[openBraceIndex] != '{') return null;
+    var depth = 1;
+    var i = openBraceIndex + 1;
+    while (i < content.length && depth > 0) {
+      if (content[i] == '{') depth++;
+      if (content[i] == '}') depth--;
+      i++;
+    }
+    if (depth != 0) return null;
+    return content.substring(openBraceIndex + 1, i - 1);
+  }
+
   void _extractKtsSigningEntry(String block, Map<String, String> out) {
-    final storeFile = RegExp(r'storeFile\s*=\s*file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)').firstMatch(block);
-    if (storeFile != null) out['storeFile'] = storeFile.group(1)!.trim();
+    final storeFileLiteral = RegExp(
+      r'storeFile\s*=\s*file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)',
+    ).firstMatch(block);
+    if (storeFileLiteral != null) {
+      out['storeFile'] = storeFileLiteral.group(1)!.trim();
+    } else {
+      final storeFileProperty = RegExp(
+        r'storeFile\s*=\s*file\s*\((?:rootProject\.)?file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)',
+      ).firstMatch(block);
+      if (storeFileProperty != null) out['storeFile'] = storeFileProperty.group(1)!.trim();
+      if (!out.containsKey('storeFile') && RegExp(r'storeFile\s*=').hasMatch(block)) {
+        out['storeFile'] = '(da proprietà / variabile)';
+      }
+    }
     final storePassword = RegExp(r'storePassword\s*=\s*[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(block);
     if (storePassword != null) out['storePassword'] = storePassword.group(1)!.trim();
     final keyAlias = RegExp(r'keyAlias\s*=\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(block);
@@ -230,10 +296,27 @@ class ProjectInfoService {
   void _extractAndroidSigningGroovy(String content, Map<String, String> out) {
     final signingBlock = _extractBlock(content, 'signingConfigs');
     if (signingBlock == null) return;
-    final releaseMatch = RegExp(r'release\s*\{([^}]+)\}').firstMatch(signingBlock);
-    final block = releaseMatch?.group(1) ?? signingBlock;
+    for (final name in ['release', 'production']) {
+      final nameMatch = RegExp(RegExp.escape(name) + r'\s*\{').firstMatch(signingBlock);
+      if (nameMatch != null) {
+        final block = _extractBalancedBraces(signingBlock, nameMatch.end - 1);
+        if (block != null && _extractGroovySigningEntry(block, out)) return;
+      }
+    }
+    // Qualsiasi blocco nome { ... } che contenga storeFile
+    final blockStartRegex = RegExp(r'\b(\w+)\s*\{');
+    for (final match in blockStartRegex.allMatches(signingBlock)) {
+      final block = _extractBalancedBraces(signingBlock, match.end - 1);
+      if (block != null && block.contains('storeFile') && _extractGroovySigningEntry(block, out)) return;
+    }
+  }
+
+  bool _extractGroovySigningEntry(String block, Map<String, String> out) {
     final storeFile = RegExp(r'storeFile\s+file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)').firstMatch(block);
     if (storeFile != null) out['storeFile'] = storeFile.group(1)!.trim();
+    if (!out.containsKey('storeFile') && RegExp(r'storeFile\s+').hasMatch(block)) {
+      out['storeFile'] = '(da proprietà / variabile)';
+    }
     final storePassword = RegExp(r'storePassword\s+[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(block);
     if (storePassword != null) out['storePassword'] = storePassword.group(1)!.trim();
     final keyAlias = RegExp(r'keyAlias\s+[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(block);
@@ -242,20 +325,7 @@ class ProjectInfoService {
     if (keyPassword != null) out['keyPassword'] = keyPassword.group(1)!.trim();
     final storeType = RegExp(r'storeType\s+[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(block);
     if (storeType != null) out['storeType'] = storeType.group(1)!.trim();
-    if (out.isEmpty) {
-      final configMatch = RegExp(r'(\w+)\s*\{([^}]+storeFile[^}]+)\}').firstMatch(signingBlock);
-      if (configMatch != null) {
-        final inner = configMatch.group(2)!;
-        final f = RegExp(r'storeFile\s+file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)').firstMatch(inner);
-        if (f != null) out['storeFile'] = f.group(1)!.trim();
-        final p = RegExp(r'storePassword\s+[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(inner);
-        if (p != null) out['storePassword'] = p.group(1)!.trim();
-        final a = RegExp(r'keyAlias\s+[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(inner);
-        if (a != null) out['keyAlias'] = a.group(1)!.trim();
-        final k = RegExp(r'keyPassword\s+[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(inner);
-        if (k != null) out['keyPassword'] = k.group(1)!.trim();
-      }
-    }
+    return out.isNotEmpty;
   }
 
   /// Estrae il contenuto del primo blocco con chiave [blockName] (es. signingConfigs { ... }).
@@ -309,7 +379,10 @@ class ProjectInfoService {
                 final bundleId = current['PRODUCT_BUNDLE_IDENTIFIER'] ?? '';
                 if (bundleId.isNotEmpty && !bundleId.contains('RunnerUITests') && result.isEmpty) {
                   result.addAll(current);
-                  developer.log('_readIosBuildSettings: letti ${current.length} da ${entity.uri.pathSegments.last}', name: _logName);
+                  developer.log(
+                    '_readIosBuildSettings: letti ${current.length} da ${entity.uri.pathSegments.last}',
+                    name: _logName,
+                  );
                   return result;
                 }
               }
@@ -364,11 +437,7 @@ class ProjectInfoService {
             RegExp('$key\\s*=\\s*(\\d+)'),
             RegExp('$key\\s*=\\s*([A-Za-z0-9_.]+)'),
           ]
-        : [
-            RegExp('$key\\s+["\']([^"\']+)["\']'),
-            RegExp('$key\\s+(\\d+)'),
-            RegExp('$key\\s+([A-Za-z0-9_.]+)'),
-          ];
+        : [RegExp('$key\\s+["\']([^"\']+)["\']'), RegExp('$key\\s+(\\d+)'), RegExp('$key\\s+([A-Za-z0-9_.]+)')];
     for (final re in patterns) {
       final m = re.firstMatch(content);
       if (m != null && m.group(1) != null) {
@@ -394,7 +463,8 @@ class ProjectInfoService {
       if (entity is Directory) {
         final name = entity.uri.pathSegments.last;
         final baseName = name.replaceAll('.imageset', '');
-        final isLaunchSplash = name == 'LaunchImage.imageset' ||
+        final isLaunchSplash =
+            name == 'LaunchImage.imageset' ||
             name == 'Splash.imageset' ||
             name.toLowerCase().contains('launch') ||
             name.toLowerCase().contains('splash');
@@ -463,7 +533,14 @@ class ProjectInfoService {
     }
     // Nomi file comuni per splash
     const splashNames = ['splash.png', 'launch_background.png', 'splash_logo.png', 'flutter_logo.png'];
-    final drawableDirs = ['drawable', 'drawable-mdpi', 'drawable-hdpi', 'drawable-xhdpi', 'drawable-xxhdpi', 'drawable-xxxhdpi'];
+    final drawableDirs = [
+      'drawable',
+      'drawable-mdpi',
+      'drawable-hdpi',
+      'drawable-xhdpi',
+      'drawable-xxhdpi',
+      'drawable-xxxhdpi',
+    ];
     for (final dirName in drawableDirs) {
       for (final name in splashNames) {
         final file = File('$projectPath/android/app/src/main/res/$dirName/$name');
@@ -495,14 +572,40 @@ class ProjectInfoService {
     return null;
   }
 
-  /// Restituisce il percorso a un'immagine dell'icona iOS (AppIcon.appiconset o *.appiconset).
-  /// Cerca in ios/Runner/Assets.xcassets: prima AppIcon.appiconset, poi default.appiconset,
-  /// poi il primo .appiconset trovato (per progetti con flavor/schemi che usano set diversi).
-  Future<String?> _detectIosAppIcon(String projectPath) async {
+  /// Legge dal project.pbxproj iOS il nome dell'icona principale (ASSETCATALOG_COMPILER_APPICON_NAME).
+  Future<String?> _readIosMainAppIconName(String projectPath) async {
+    final iosDir = Directory('$projectPath/ios');
+    if (!await iosDir.exists()) return null;
+    await for (final entity in iosDir.list(followLinks: false)) {
+      if (entity is Directory && entity.path.endsWith('.xcodeproj')) {
+        final pbxproj = File('${entity.path}/project.pbxproj');
+        if (!await pbxproj.exists()) continue;
+        try {
+          final content = await pbxproj.readAsString();
+          // ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; oppure = "AppIcon";
+          final re = RegExp('ASSETCATALOG_COMPILER_APPICON_NAME\\s*=\\s*["\']?([^"\';\\s]+)["\']?\\s*;');
+          final match = re.firstMatch(content);
+          if (match != null) {
+            final name = match.group(1)!.trim();
+            developer.log('_readIosMainAppIconName: da pbxproj → $name', name: _logName);
+            return name;
+          }
+        } catch (e, st) {
+          developer.log('_readIosMainAppIconName: errore', name: _logName, error: e, stackTrace: st);
+        }
+        break;
+      }
+    }
+    return null;
+  }
+
+  /// Restituisce tutte le icone iOS (.appiconset) con path, etichetta e flag principale.
+  /// La principale è quella indicata in project.pbxproj (ASSETCATALOG_COMPILER_APPICON_NAME).
+  Future<List<AppIconEntry>> _detectIosAppIcons(String projectPath) async {
     final assetsDir = Directory('$projectPath/ios/Runner/Assets.xcassets');
     if (!await assetsDir.exists()) {
-      developer.log('_detectIosAppIcon: Assets.xcassets non trovato', name: _logName);
-      return null;
+      developer.log('_detectIosAppIcons: Assets.xcassets non trovato', name: _logName);
+      return [];
     }
     final appIconSetPaths = <String>[];
     await for (final entity in assetsDir.list(followLinks: false)) {
@@ -511,24 +614,23 @@ class ProjectInfoService {
         if (name.endsWith('.appiconset')) appIconSetPaths.add(entity.path);
       }
     }
-    // Ordine preferito: AppIcon > default > altri (alfabetico)
-    appIconSetPaths.sort((a, b) {
-      final nameA = a.split('/').last;
-      final nameB = b.split('/').last;
-      final orderA = nameA == 'AppIcon.appiconset' ? 0 : (nameA == 'default.appiconset' ? 1 : 2);
-      final orderB = nameB == 'AppIcon.appiconset' ? 0 : (nameB == 'default.appiconset' ? 1 : 2);
-      if (orderA != orderB) return orderA.compareTo(orderB);
-      return nameA.compareTo(nameB);
-    });
+    appIconSetPaths.sort((a, b) => a.split('/').last.compareTo(b.split('/').last));
+    final mainNameFromManifest = await _readIosMainAppIconName(projectPath);
+    final result = <AppIconEntry>[];
     for (final dirPath in appIconSetPaths) {
       final path = _resolveFirstImageFromAppIconSet(dirPath);
       if (path != null) {
-        developer.log('_detectIosAppIcon: trovato $path', name: _logName);
-        return path;
+        final setName = dirPath.split('/').last.replaceAll('.appiconset', '');
+        final isMain = mainNameFromManifest != null && setName == mainNameFromManifest;
+        result.add(AppIconEntry(path: path, label: setName, isMain: isMain));
+        developer.log('_detectIosAppIcons: $setName → $path (main=$isMain)', name: _logName);
       }
     }
-    developer.log('_detectIosAppIcon: nessuna icona trovata', name: _logName);
-    return null;
+    if (result.isNotEmpty && result.every((e) => !e.isMain) && mainNameFromManifest == null) {
+      result[0] = AppIconEntry(path: result[0].path, label: result[0].label, isMain: true);
+    }
+    if (result.isEmpty) developer.log('_detectIosAppIcons: nessuna icona trovata', name: _logName);
+    return result;
   }
 
   /// Risolve il percorso al primo file immagine valido in un .appiconset (Contents.json o primo PNG).
@@ -557,29 +659,152 @@ class ProjectInfoService {
     return null;
   }
 
-  /// Restituisce il percorso a un'immagine dell'icona Android (mipmap o drawable).
-  Future<String?> _detectAndroidAppIcon(String projectPath) async {
+  /// Voce launcher letta dal manifest (icon ref es. @mipmap/ic_launcher, isMain se è l'activity principale).
+  static final _androidIconRefRegex = RegExp('android:icon\\s*=\\s*["\']([^"\']+)["\']');
+  static final _androidEnabledRegex = RegExp('android:enabled\\s*=\\s*["\']([^"\']+)["\']');
+  static final _androidLabelRegex = RegExp('android:label\\s*=\\s*["\']([^"\']+)["\']');
+
+  /// Legge dal manifest Android i launcher (activity/activity-alias con MAIN+LAUNCHER) e le relative icone.
+  /// isMain = true per la prima <activity> (non alias) con launcher, oppure per l'<activity-alias> con enabled=true.
+  Future<List<_AndroidLauncherEntry>> _readAndroidLauncherIconsFromManifest(String projectPath) async {
+    final manifestFile = File('$projectPath/android/app/src/main/AndroidManifest.xml');
+    if (!await manifestFile.exists()) {
+      developer.log('_readAndroidLauncherIconsFromManifest: manifest non trovato', name: _logName);
+      return [];
+    }
+    String content;
+    try {
+      content = await manifestFile.readAsString();
+    } catch (e, st) {
+      developer.log('_readAndroidLauncherIconsFromManifest: errore lettura', name: _logName, error: e, stackTrace: st);
+      return [];
+    }
+    String? appIconRef;
+    final appIconMatch = _androidIconRefRegex.firstMatch(content);
+    if (appIconMatch != null) appIconRef = appIconMatch.group(1);
+
+    final launchers = <_AndroidLauncherRaw>[];
+    final activityRegex = RegExp(r'<activity(?:\s[^>]*)?>', caseSensitive: false, dotAll: false);
+    final aliasRegex = RegExp(r'<activity-alias(?:\s[^>]*)?>', caseSensitive: false);
+    final intentFilterRegex = RegExp(
+      r'<intent-filter\s*[^>]*>.*?MAIN.*?LAUNCHER.*?</intent-filter>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+
+    for (final match in activityRegex.allMatches(content)) {
+      final tag = match.group(0)!;
+      final endTag = content.indexOf('</activity>', match.end);
+      if (endTag == -1) continue;
+      final block = content.substring(match.start, endTag + '</activity>'.length);
+      if (!intentFilterRegex.hasMatch(block)) continue;
+      final iconMatch = _androidIconRefRegex.firstMatch(tag);
+      final labelMatch = _androidLabelRegex.firstMatch(tag);
+      final iconRef = iconMatch != null ? iconMatch.group(1)! : (appIconRef ?? '@mipmap/ic_launcher');
+      launchers.add(
+        _AndroidLauncherRaw(iconRef: iconRef, label: labelMatch?.group(1), isActivity: true, enabled: true),
+      );
+    }
+    for (final match in aliasRegex.allMatches(content)) {
+      final tag = match.group(0)!;
+      final endTag = content.indexOf('</activity-alias>', match.end);
+      if (endTag == -1) continue;
+      final block = content.substring(match.start, endTag + '</activity-alias>'.length);
+      if (!intentFilterRegex.hasMatch(block)) continue;
+      final iconMatch = _androidIconRefRegex.firstMatch(tag);
+      final enabledMatch = _androidEnabledRegex.firstMatch(tag);
+      final enabled = enabledMatch == null || enabledMatch.group(1)!.toLowerCase() != 'false';
+      final iconRef = iconMatch != null ? iconMatch.group(1)! : (appIconRef ?? '@mipmap/ic_launcher');
+      final labelMatch = _androidLabelRegex.firstMatch(tag);
+      launchers.add(
+        _AndroidLauncherRaw(iconRef: iconRef, label: labelMatch?.group(1), isActivity: false, enabled: enabled),
+      );
+    }
+
+    final result = <_AndroidLauncherEntry>[];
+    final hasActivityLauncher = launchers.any((e) => e.isActivity);
+    var mainAssigned = false;
+    for (final e in launchers) {
+      final isMain = !mainAssigned && (hasActivityLauncher ? e.isActivity : e.enabled);
+      if (isMain) mainAssigned = true;
+      result.add(_AndroidLauncherEntry(iconRef: e.iconRef, label: e.label, isMain: isMain));
+    }
+    developer.log('_readAndroidLauncherIconsFromManifest: ${result.length} launcher', name: _logName);
+    return result;
+  }
+
+  /// Risolve un riferimento @mipmap/name o @drawable/name al primo file esistente in res (priorità densità alte).
+  String? _resolveAndroidIconRef(String projectPath, String iconRef) {
+    if (!iconRef.startsWith('@')) return null;
+    final parts = iconRef.substring(1).split('/');
+    if (parts.length != 2) return null;
+    final type = parts[0];
+    final name = parts[1];
+    final base = '$projectPath/android/app/src/main/res';
+    if (type == 'mipmap') {
+      const densities = ['mipmap-xxxhdpi', 'mipmap-xxhdpi', 'mipmap-xhdpi', 'mipmap-hdpi', 'mipmap-mdpi'];
+      for (final d in densities) {
+        final f = File('$base/$d/$name.png');
+        if (f.existsSync()) return f.path;
+      }
+    }
+    if (type == 'drawable') {
+      const densities = [
+        'drawable-xxxhdpi',
+        'drawable-xxhdpi',
+        'drawable-xhdpi',
+        'drawable-hdpi',
+        'drawable-mdpi',
+        'drawable',
+      ];
+      for (final d in densities) {
+        final f = File('$base/$d/$name.png');
+        if (f.existsSync()) return f.path;
+      }
+    }
+    return null;
+  }
+
+  /// Restituisce tutte le icone Android dichiarate nel manifest (launcher): una per activity/alias con MAIN+LAUNCHER.
+  /// La principale è quella dell'activity launcher (non alias) o l'alias abilitato se sono solo alias.
+  Future<List<AppIconEntry>> _detectAndroidAppIcons(String projectPath) async {
+    final manifestLaunchers = await _readAndroidLauncherIconsFromManifest(projectPath);
     final resDir = Directory('$projectPath/android/app/src/main/res');
     if (!await resDir.exists()) {
-      developer.log('_detectAndroidAppIcon: res/ non trovato', name: _logName);
-      return null;
+      developer.log('_detectAndroidAppIcons: res/ non trovato', name: _logName);
+      return [];
     }
-    // Ordine preferito: xxxhdpi > xxhdpi > xhdpi > hdpi > mdpi (per avere icona ad alta risoluzione)
+    if (manifestLaunchers.isNotEmpty) {
+      final result = <AppIconEntry>[];
+      for (final entry in manifestLaunchers) {
+        final path = _resolveAndroidIconRef(projectPath, entry.iconRef);
+        if (path != null) {
+          final label = entry.label ?? entry.iconRef.replaceFirst('@', '');
+          result.add(AppIconEntry(path: path, label: label, isMain: entry.isMain));
+          developer.log('_detectAndroidAppIcons: ${entry.iconRef} → $path (main=${entry.isMain})', name: _logName);
+        }
+      }
+      if (result.isNotEmpty) return result;
+    }
+    // Fallback: nessun launcher nel manifest o icone non risolte, elenca mipmap/drawable
+    final result = <AppIconEntry>[];
     const mipmapDensities = ['mipmap-xxxhdpi', 'mipmap-xxhdpi', 'mipmap-xhdpi', 'mipmap-hdpi', 'mipmap-mdpi'];
-    for (final density in mipmapDensities) {
+    for (var i = 0; i < mipmapDensities.length; i++) {
+      final density = mipmapDensities[i];
       for (final name in ['ic_launcher.png', 'ic_launcher_round.png']) {
         final file = File('$projectPath/android/app/src/main/res/$density/$name');
         if (await file.exists()) {
-          developer.log('_detectAndroidAppIcon: trovato ${file.path}', name: _logName);
-          return file.path;
+          final label = '$density · ${name.replaceAll('.png', '')}';
+          result.add(AppIconEntry(path: file.path, label: label, isMain: result.isEmpty));
         }
       }
     }
-    // drawable fallback
     final drawableFile = File('$projectPath/android/app/src/main/res/drawable/ic_launcher.png');
-    if (await drawableFile.exists()) return drawableFile.path;
-    developer.log('_detectAndroidAppIcon: nessuna icona trovata', name: _logName);
-    return null;
+    if (await drawableFile.exists()) {
+      result.add(AppIconEntry(path: drawableFile.path, label: 'drawable · ic_launcher', isMain: result.isEmpty));
+    }
+    if (result.isEmpty) developer.log('_detectAndroidAppIcons: nessuna icona trovata', name: _logName);
+    return result;
   }
 
   /// Esegue `flutter --version` nella cartella del progetto e restituisce la prima riga (es. "Flutter 3.24.5 • channel stable").
@@ -629,12 +854,7 @@ class ProjectInfoService {
 
   Future<String?> _runFlutterVersion(String executable, String workingDirectory) async {
     try {
-      final result = await Process.run(
-        executable,
-        ['--version'],
-        workingDirectory: workingDirectory,
-        runInShell: true,
-      );
+      final result = await Process.run(executable, ['--version'], workingDirectory: workingDirectory, runInShell: true);
       if (result.exitCode != 0) {
         developer.log('_runFlutterVersion: exitCode=${result.exitCode}, stderr=${result.stderr}', name: _logName);
         return null;
@@ -809,7 +1029,10 @@ class ProjectInfoService {
       }
     }
     result.sort((a, b) => a.envName.compareTo(b.envName));
-    developer.log('_detectEnvScripts: ${result.length} script → ${result.map((e) => e.scriptFile).toList()}', name: _logName);
+    developer.log(
+      '_detectEnvScripts: ${result.length} script → ${result.map((e) => e.scriptFile).toList()}',
+      name: _logName,
+    );
     return result;
   }
 
@@ -855,5 +1078,127 @@ class ProjectInfoService {
     result.sort();
     developer.log('_detectDartEnvSourceFiles: ${result.length} file → $result', name: _logName);
     return result;
+  }
+
+  /// Legge .vscode/launch.json e restituisce percorso e lista configurazioni (nome + eventuale flavor).
+  Future<(String?, List<LaunchConfigEntry>)> _readLaunchJson(String projectPath) async {
+    const relativePath = '.vscode/launch.json';
+    final file = File('$projectPath/$relativePath');
+    if (!await file.exists()) {
+      developer.log('_readLaunchJson: file non presente', name: _logName);
+      return (null, <LaunchConfigEntry>[]);
+    }
+    developer.log('_readLaunchJson: file trovato ${file.path}', name: _logName);
+    final configs = <LaunchConfigEntry>[];
+    try {
+      String content = await file.readAsString();
+      content = _stripJsonComments(content);
+      final decoded = jsonDecode(content) as Map<String, dynamic>?;
+      if (decoded == null) {
+        developer.log('_readLaunchJson: decoded null', name: _logName);
+        return (relativePath, configs);
+      }
+      final list = decoded['configurations'];
+      developer.log('_readLaunchJson: configurations type=${list.runtimeType}, isList=${list is List}, length=${list is List ? list.length : "n/a"}', name: _logName);
+      if (list is List) {
+        for (var i = 0; i < list.length; i++) {
+          final item = list[i];
+          if (item is! Map) {
+            developer.log('_readLaunchJson: [$i] skip (non Map, type=${item.runtimeType})', name: _logName);
+            continue;
+          }
+          final map = Map<String, dynamic>.from(item);
+          if (map['request'] != 'launch' || map['type'] != 'dart') {
+            developer.log('_readLaunchJson: [$i] skip (request=${map['request']}, type=${map['type']})', name: _logName);
+            continue;
+          }
+          final name = map['name']?.toString().trim();
+          if (name == null || name.isEmpty) {
+            developer.log('_readLaunchJson: [$i] skip (name vuoto o null)', name: _logName);
+            continue;
+          }
+          String? flavor;
+          final args = map['args'];
+          if (args is List) {
+            for (var j = 0; j < args.length - 1; j++) {
+              if (args[j] == '--flavor' && args[j + 1] != null) {
+                flavor = args[j + 1].toString().trim();
+                break;
+              }
+            }
+          }
+          configs.add(LaunchConfigEntry(name: name, flavor: flavor?.isEmpty == true ? null : flavor));
+          developer.log('_readLaunchJson: [$i] aggiunta "$name"${flavor != null && flavor.isNotEmpty ? " flavor=$flavor" : ""}', name: _logName);
+        }
+      }
+    } catch (e, st) {
+      developer.log('_readLaunchJson: parse error $e', name: _logName);
+      developer.log('_readLaunchJson: $st', name: _logName);
+    }
+    developer.log('_readLaunchJson: totale ${configs.length} configurazioni', name: _logName);
+    return (relativePath, configs);
+  }
+
+  /// Rimuove commenti // e /* */ (anche multiriga) e virgole finali, per parsare launch.json con commenti.
+  static String _stripJsonComments(String text) {
+    final buffer = StringBuffer();
+    var i = 0;
+    final len = text.length;
+    var inDouble = false;
+    var inSingle = false;
+    while (i < len) {
+      final c = text[i];
+      if (inDouble || inSingle) {
+        if (c == r'\' && i + 1 < len) {
+          buffer.write(c);
+          buffer.write(text[i + 1]);
+          i += 2;
+          continue;
+        }
+        if ((inDouble && c == '"') || (inSingle && c == "'")) {
+          inDouble = false;
+          inSingle = false;
+        }
+        buffer.write(c);
+        i++;
+        continue;
+      }
+      if (c == '"') {
+        inDouble = true;
+        buffer.write(c);
+        i++;
+        continue;
+      }
+      if (c == "'") {
+        inSingle = true;
+        buffer.write(c);
+        i++;
+        continue;
+      }
+      if (i < len - 1 && c == '/' && text[i + 1] == '/') {
+        i += 2;
+        while (i < len && text[i] != '\n') i++;
+        if (i < len) buffer.write('\n');
+        i++;
+        continue;
+      }
+      if (i < len - 1 && c == '/' && text[i + 1] == '*') {
+        i += 2;
+        while (i < len - 1 && (text[i] != '*' || text[i + 1] != '/')) i++;
+        i += 2;
+        continue;
+      }
+      buffer.write(c);
+      i++;
+    }
+    return _stripTrailingCommas(buffer.toString());
+  }
+
+  /// Rimuove virgole prima di ] o } (JSON standard non le ammette, ma launch.json spesso le ha).
+  static String _stripTrailingCommas(String text) {
+    return text.replaceAllMapped(
+      RegExp(r',(\s*[}\]])'),
+      (m) => m.group(1)!,
+    );
   }
 }

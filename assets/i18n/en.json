@@ -15,7 +15,10 @@
     "dropHere": "Drop the folder here",
     "dragHere": "Drag the project folder here",
     "validProject": "Valid Flutter project",
-    "notValidProject": "Not a valid Flutter project"
+    "notValidProject": "Not a valid Flutter project",
+    "recentProjects": "Recent projects",
+    "recentProjectsEmpty": "No recent projects",
+    "openProject": "Open"
   },
   "detection": {
     "flutterProject": "Flutter project",
@@ -35,6 +38,7 @@
     "tabEnv": "Environment",
     "tabIcons": "App icons",
     "tabSigning": "Signing",
+    "tabRelease": "Release",
     "signingIos": "iOS code signing",
     "signingAndroid": "Android signing",
     "noSigningConfig": "No signing configuration detected",
@@ -52,6 +56,10 @@
     "envAndroid": "Env Android",
     "envIos": "Env iOS",
     "noEnvFiles": "No .env file detected",
+    "launchJson": "Launch config (.vscode/launch.json)",
+    "noLaunchJson": "No .vscode/launch.json found",
+    "launchConfigurations": "Configurations",
+    "noLaunchConfigurations": "No configurations in launch.json",
     "envScripts": "Env scripts (use-X-env.sh)",
     "noEnvScripts": "No use-X-env.sh script detected",
     "firebaseEnvs": "Firebase envs",
@@ -75,10 +83,25 @@
     "iosIcon": "iOS",
     "androidIcon": "Android",
     "noAppIcons": "No app icons found (iOS or Android)",
+    "mainIcon": "Main",
     "splashScreen": "Splash screen",
     "showInFinder": "Show in Finder",
     "buildSettingsIos": "iOS build settings",
     "buildSettingsAndroid": "Android Gradle settings"
+  },
+  "release": {
+    "tabDescription": "Build and release the app for each environment. Use the button below to run a release build (APK) for that environment.",
+    "buildButton": "Build release",
+    "building": "Building…",
+    "done": "Build completed",
+    "error": "Build failed"
+  },
+  "findInPage": {
+    "hint": "Find",
+    "previous": "Previous",
+    "next": "Next",
+    "close": "Close (Esc)",
+    "noResults": "No results"
   },
   "projectInfoProvider": {
     "pathEmpty": "projectPath cannot be empty"

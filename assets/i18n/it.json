@@ -15,7 +15,10 @@
     "dropHere": "Rilascia la cartella qui",
     "dragHere": "Trascina qui la cartella del progetto",
     "validProject": "Progetto Flutter valido",
-    "notValidProject": "Non è un progetto Flutter valido"
+    "notValidProject": "Non è un progetto Flutter valido",
+    "recentProjects": "Progetti recenti",
+    "recentProjectsEmpty": "Nessun progetto recente",
+    "openProject": "Apri"
   },
   "detection": {
     "flutterProject": "Progetto Flutter",
@@ -35,6 +38,7 @@
     "tabEnv": "Environment",
     "tabIcons": "Icone app",
     "tabSigning": "Firma",
+    "tabRelease": "Release",
     "signingIos": "Code signing iOS",
     "signingAndroid": "Signing Android",
     "noSigningConfig": "Nessuna configurazione di firma rilevata",
@@ -52,6 +56,10 @@
     "envAndroid": "Env Android",
     "envIos": "Env iOS",
     "noEnvFiles": "Nessun file .env rilevato",
+    "launchJson": "Config launch (.vscode/launch.json)",
+    "noLaunchJson": "Nessun .vscode/launch.json trovato",
+    "launchConfigurations": "Configurazioni",
+    "noLaunchConfigurations": "Nessuna configurazione in launch.json",
     "envScripts": "Script env (use-X-env.sh)",
     "noEnvScripts": "Nessuno script use-X-env.sh rilevato",
     "firebaseEnvs": "Firebase env",
@@ -75,10 +83,25 @@
     "iosIcon": "iOS",
     "androidIcon": "Android",
     "noAppIcons": "Nessuna icona app trovata (iOS o Android)",
+    "mainIcon": "Principale",
     "splashScreen": "Splash screen",
     "showInFinder": "Mostra nel Finder",
     "buildSettingsIos": "Build settings iOS",
     "buildSettingsAndroid": "Impostazioni Gradle Android"
+  },
+  "release": {
+    "tabDescription": "Compila e rilascia l'app per ogni ambiente. Usa il pulsante sotto per eseguire una build di release (APK) per quell'ambiente.",
+    "buildButton": "Build release",
+    "building": "Build in corso…",
+    "done": "Build completata",
+    "error": "Build fallita"
+  },
+  "findInPage": {
+    "hint": "Cerca",
+    "previous": "Precedente",
+    "next": "Successivo",
+    "close": "Chiudi (Esc)",
+    "noResults": "Nessun risultato"
   },
   "projectInfoProvider": {
     "pathEmpty": "projectPath non può essere vuoto"
