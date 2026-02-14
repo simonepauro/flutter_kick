@@ -1,0 +1,63 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'select_project_provider.dart';
+
+// **************************************************************************
+// RiverpodGenerator
+// **************************************************************************
+
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+
+@ProviderFor(SelectProject)
+const selectProjectProvider = SelectProjectProvider._();
+
+final class SelectProjectProvider
+    extends $NotifierProvider<SelectProject, SelectProjectState> {
+  const SelectProjectProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'selectProjectProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$selectProjectHash();
+
+  @$internal
+  @override
+  SelectProject create() => SelectProject();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(SelectProjectState value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<SelectProjectState>(value),
+    );
+  }
+}
+
+String _$selectProjectHash() => r'399b42a62f4747bb054c04034e2ca0e0c92b4f0c';
+
+abstract class _$SelectProject extends $Notifier<SelectProjectState> {
+  SelectProjectState build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build();
+    final ref = this.ref as $Ref<SelectProjectState, SelectProjectState>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<SelectProjectState, SelectProjectState>,
+              SelectProjectState,
+              Object?,
+              Object?
+            >;
+    element.handleValue(ref, created);
+  }
+}

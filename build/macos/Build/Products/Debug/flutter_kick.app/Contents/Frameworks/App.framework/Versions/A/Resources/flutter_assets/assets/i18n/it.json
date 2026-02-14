@@ -1,0 +1,71 @@
+{
+  "app": {
+    "title": "Flutter Kick"
+  },
+  "selectProject": {
+    "title": "Flutter Kick",
+    "projectPathLabel": "Percorso del progetto",
+    "projectPathHint": "Inserisci il percorso della cartella del progetto oppure trascinala qui sotto.",
+    "pathFieldHint": "es. /Users/nome/progetti/mio_progetto",
+    "useProject": "Usa questo progetto",
+    "dropHere": "Rilascia la cartella qui",
+    "dragHere": "Trascina qui la cartella del progetto",
+    "validProject": "Progetto Flutter valido",
+    "notValidProject": "Non è un progetto Flutter valido"
+  },
+  "detection": {
+    "flutterProject": "Progetto Flutter",
+    "notFlutterProject": "Non è un progetto Flutter",
+    "error": "Errore: {message}"
+  },
+  "errors": {
+    "emptyPath": "Percorso vuoto",
+    "folderNotFound": "La cartella non esiste",
+    "noPubspec": "Nessun pubspec.yaml trovato",
+    "noFlutterDependency": "pubspec.yaml non dichiara la dipendenza Flutter",
+    "readError": "Impossibile leggere pubspec.yaml: {message}"
+  },
+  "projectInfo": {
+    "title": "Info progetto",
+    "back": "Indietro",
+    "loadError": "Impossibile caricare le info",
+    "project": "Progetto",
+    "name": "Nome",
+    "description": "Descrizione",
+    "version": "Versione",
+    "publishTo": "Publish to",
+    "environment": "Environment",
+    "sdk": "SDK",
+    "envFiles": "Env (.env)",
+    "envAndroid": "Env Android",
+    "envIos": "Env iOS",
+    "noEnvFiles": "Nessun file .env rilevato",
+    "envScripts": "Script env (use-X-env.sh)",
+    "noEnvScripts": "Nessuno script use-X-env.sh rilevato",
+    "firebaseEnvs": "Firebase env",
+    "noFirebaseEnvs": "Nessuna cartella env in firebase/",
+    "dartEnvSources": "Moduli Dart env (*_env_*.txt)",
+    "noDartEnvSources": "Nessun file *_env_*.txt in lib/",
+    "flavors": "Flavor",
+    "flavorsAndroid": "Flavor Android",
+    "flavorsIos": "Flavor iOS",
+    "noFlavors": "Nessun flavor configurato",
+    "platforms": "Piattaforme",
+    "noPlatforms": "Nessuna cartella piattaforma rilevata",
+    "dependenciesCount": "Dipendenze ({count})",
+    "noDependencies": "Nessuna dipendenza",
+    "deprecated": "Deprecata",
+    "updateAvailable": "Aggiornamento disponibile",
+    "devDependenciesCount": "Dev dipendenze ({count})",
+    "noDevDependencies": "Nessuna dev dipendenza",
+    "path": "Percorso"
+  },
+  "projectInfoProvider": {
+    "pathEmpty": "projectPath non può essere vuoto"
+  },
+  "projectInfoService": {
+    "folderNotFound": "Cartella non trovata",
+    "pubspecNotFound": "pubspec.yaml non trovato",
+    "pubspecInvalid": "pubspec.yaml non valido"
+  }
+}
