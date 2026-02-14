@@ -1114,25 +1114,29 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
           final iosKey = _buildKey(env, _platformIos);
           final androidController = _consoleScrollControllers[androidKey];
           final iosController = _hasIos ? _consoleScrollControllers[iosKey] : null;
+          final androidOutput = _consoleOutputByKey[androidKey] ?? '';
+          final iosOutput = _consoleOutputByKey[iosKey] ?? '';
+          final showAndroidConsole = androidController != null && (androidOutput.isNotEmpty || _runningBuilds.contains(androidKey));
+          final showIosConsole = iosController != null && (iosOutput.isNotEmpty || _runningBuilds.contains(iosKey));
           return [
             Padding(padding: const EdgeInsets.only(bottom: 12), child: wrapped),
-            if (androidController != null)
+            if (showAndroidConsole)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _ReleaseConsole(
                   title: '$env · ${t(context, 'release.platformAndroid')}',
-                  output: _consoleOutputByKey[androidKey] ?? '',
+                  output: androidOutput,
                   scrollController: androidController,
                   isBuilding: _runningBuilds.contains(androidKey),
                   onClear: () => _clearConsoleFor(androidKey),
                 ),
               ),
-            if (iosController != null)
+            if (showIosConsole)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _ReleaseConsole(
                   title: '$env · ${t(context, 'release.platformIos')}',
-                  output: _consoleOutputByKey[iosKey] ?? '',
+                  output: iosOutput,
                   scrollController: iosController,
                   isBuilding: _runningBuilds.contains(iosKey),
                   onClear: () => _clearConsoleFor(iosKey),

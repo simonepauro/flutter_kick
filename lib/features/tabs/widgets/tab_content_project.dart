@@ -89,12 +89,13 @@ class _TabContentProjectState extends ConsumerState<TabContentProject> {
           ),
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Focus(
             focusNode: _panelFocusNode,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Toolbar stile macOS: segmented control + pulsante ricerca
                 Row(
                   children: [
                     Expanded(
@@ -104,27 +105,27 @@ class _TabContentProjectState extends ConsumerState<TabContentProject> {
                           ButtonSegment(
                             value: 0,
                             label: Text(t(context, 'projectInfo.tabInfo')),
-                            icon: const Icon(Icons.info_outline),
+                            icon: const Icon(Icons.info_outline, size: 18),
                           ),
                           ButtonSegment(
                             value: 1,
                             label: Text(t(context, 'projectInfo.tabEnv')),
-                            icon: const Icon(Icons.cloud_outlined),
+                            icon: const Icon(Icons.cloud_outlined, size: 18),
                           ),
                           ButtonSegment(
                             value: 2,
                             label: Text(t(context, 'projectInfo.tabIcons')),
-                            icon: const Icon(Icons.image_outlined),
+                            icon: const Icon(Icons.image_outlined, size: 18),
                           ),
                           ButtonSegment(
                             value: 3,
                             label: Text(t(context, 'projectInfo.tabSigning')),
-                            icon: const Icon(Icons.badge_outlined),
+                            icon: const Icon(Icons.badge_outlined, size: 18),
                           ),
                           ButtonSegment(
                             value: 4,
                             label: Text(t(context, 'projectInfo.tabRelease')),
-                            icon: const Icon(Icons.rocket_launch_outlined),
+                            icon: const Icon(Icons.rocket_launch_outlined, size: 18),
                           ),
                         ],
                         selected: {_selectedTabIndex},
@@ -136,8 +137,9 @@ class _TabContentProjectState extends ConsumerState<TabContentProject> {
                         },
                       ),
                     ),
+                    const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.search),
+                      icon: const Icon(Icons.search, size: 20),
                       tooltip: '${t(context, 'findInPage.hint')} (⌘F)',
                       onPressed: () => setState(() {
                         _findBarVisible = true;

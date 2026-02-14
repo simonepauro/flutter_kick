@@ -53,44 +53,47 @@ class TabShellScreen extends ConsumerWidget {
           body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Tab bar stile browser
+          // Tab bar stile Xcode/macOS: piatto, bordo sottile, chip tondeggianti
           Material(
-            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.7),
-            child: SafeArea(
-              bottom: false,
-              child: SizedBox(
-                height: 40,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
-                        children: [
-                          for (var i = 0; i < tabs.length; i++) ...[
-                            _TabChip(
-                              label: tabDisplayName(tabs[i], t(context, 'app.tabNew')),
-                              isSelected: i == tabsState.selectedIndex,
-                              onTap: () => notifier.selectTab(i),
-                              onClose: () => notifier.closeTab(i),
-                            ),
-                            const SizedBox(width: 4),
+            color: theme.colorScheme.surfaceContainerHigh,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: theme.colorScheme.outline.withOpacity(0.5), width: 0.5)),
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: SizedBox(
+                  height: 36,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.only(left: 10, top: 4, bottom: 4),
+                          children: [
+                            for (var i = 0; i < tabs.length; i++) ...[
+                              _TabChip(
+                                label: tabDisplayName(tabs[i], t(context, 'app.tabNew')),
+                                isSelected: i == tabsState.selectedIndex,
+                                onTap: () => notifier.selectTab(i),
+                                onClose: () => notifier.closeTab(i),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                    Material(
-                      color: Colors.transparent,
-                      child: IconButton(
-                        icon: const Icon(Icons.add, size: 22),
+                      IconButton(
+                        icon: const Icon(Icons.add, size: 18),
                         tooltip: t(context, 'app.newTab'),
                         onPressed: () => notifier.addTab(),
                         style: IconButton.styleFrom(
-                          minimumSize: const Size(36, 36),
+                          minimumSize: const Size(32, 32),
+                          visualDensity: VisualDensity.compact,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -148,40 +151,47 @@ class _TabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Chip stile Xcode: selezionato = bianco con bordo, non selezionato = trasparente
+    final bgColor = isSelected ? theme.colorScheme.surface : Colors.transparent;
+    final borderColor = isSelected ? theme.colorScheme.outline : Colors.transparent;
     return Material(
-      color: isSelected
-          ? theme.colorScheme.surface
-          : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 180),
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge,
-                ),
-              ),
-              const SizedBox(width: 6),
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: onClose,
-                  child: Icon(
-                    Icons.close,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
+      color: bgColor,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: borderColor, width: 0.5),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge?.copyWith(fontSize: 13),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 6),
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: onClose,
+                    child: Icon(
+                      Icons.close,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

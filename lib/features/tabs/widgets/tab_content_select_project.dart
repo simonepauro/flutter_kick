@@ -232,17 +232,12 @@ class _TabContentSelectProjectState extends ConsumerState<TabContentSelectProjec
     }
 
     final theme = Theme.of(context);
-    final surfaceColor = theme.colorScheme.surface.withOpacity(0.94);
+    final surfaceColor = theme.colorScheme.surface;
+    final borderColor = theme.colorScheme.outline;
     final cardDecoration = BoxDecoration(
       color: surfaceColor,
-      borderRadius: BorderRadius.circular(20),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.12),
-          blurRadius: 24,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: borderColor, width: 0.5),
     );
 
     return DropTarget(

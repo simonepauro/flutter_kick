@@ -66,18 +66,18 @@ class _FKFindInPageBarState extends State<FKFindInPageBar> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final surface = isDark ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.surface;
+    final surface = theme.colorScheme.surface;
     final borderColor = theme.colorScheme.outline;
 
     return Material(
-      elevation: 2,
+      elevation: 0,
       color: surface,
       child: Container(
-        height: 48,
+        height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: borderColor, width: 1)),
+          color: surface,
+          border: Border(bottom: BorderSide(color: borderColor.withOpacity(0.5), width: 0.5)),
         ),
         child: Row(
           children: [
@@ -86,13 +86,14 @@ class _FKFindInPageBarState extends State<FKFindInPageBar> {
                 controller: _controller,
                 focusNode: _focusNode,
                 autofocus: true,
+                style: const TextStyle(fontSize: 13),
                 decoration: InputDecoration(
                   hintText: widget.hintText ?? 'Find',
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
                   filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.6),
                 ),
                 onChanged: widget.onQueryChanged,
                 textInputAction: TextInputAction.search,
@@ -106,23 +107,23 @@ class _FKFindInPageBarState extends State<FKFindInPageBar> {
             ),
             const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.keyboard_arrow_up),
+              icon: const Icon(Icons.keyboard_arrow_up, size: 20),
               onPressed: widget.matchCount > 0 ? widget.onPrevious : null,
               tooltip: widget.previousTooltip ?? 'Previous',
-              style: IconButton.styleFrom(minimumSize: const Size(36, 36)),
+              style: IconButton.styleFrom(minimumSize: const Size(32, 32)),
             ),
             IconButton(
-              icon: const Icon(Icons.keyboard_arrow_down),
+              icon: const Icon(Icons.keyboard_arrow_down, size: 20),
               onPressed: widget.matchCount > 0 ? widget.onNext : null,
               tooltip: widget.nextTooltip ?? 'Next',
-              style: IconButton.styleFrom(minimumSize: const Size(36, 36)),
+              style: IconButton.styleFrom(minimumSize: const Size(32, 32)),
             ),
             const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.close),
+              icon: const Icon(Icons.close, size: 18),
               onPressed: widget.onClose,
               tooltip: widget.closeTooltip ?? 'Close (Esc)',
-              style: IconButton.styleFrom(minimumSize: const Size(36, 36)),
+              style: IconButton.styleFrom(minimumSize: const Size(32, 32)),
             ),
           ],
         ),
@@ -141,10 +142,10 @@ class _CountLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final style = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontSize: 12);
     final text = matchCount == 0 && matchIndex == 0 ? (noResultsLabel ?? 'No results') : '$matchIndex of $matchCount';
     return SizedBox(
-      width: 64,
+      width: 56,
       child: Text(text, style: style, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
     );
   }

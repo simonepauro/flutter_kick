@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../constants/assets.dart';
-
 /// Scaffold custom con sfondo applicato. Espone le stesse proprietà principali
 /// di [Scaffold] e disegna l'immagine di sfondo sotto il contenuto.
 class FKScaffold extends StatelessWidget {
@@ -33,7 +31,8 @@ class FKScaffold extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.asset(Assets.background, fit: BoxFit.cover),
+        // Sfondo stile macOS (System Gray 6 - Apple HIG)
+        Container(decoration: const BoxDecoration(color: Color(0xFFF2F2F7))),
         Scaffold(
           backgroundColor: backgroundColor ?? Colors.transparent,
           resizeToAvoidBottomInset: resizeToAvoidBottomInset,
