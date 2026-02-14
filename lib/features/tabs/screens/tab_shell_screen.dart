@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,69 +52,66 @@ class TabShellScreen extends ConsumerWidget {
         },
         child: FKScaffold(
           body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Tab bar stile Xcode/macOS: piatto, bordo sottile, chip tondeggianti
-          Material(
-            color: theme.colorScheme.surfaceContainerHigh,
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: theme.colorScheme.outline.withOpacity(0.5), width: 0.5)),
-              ),
-              child: SafeArea(
-                bottom: false,
-                child: SizedBox(
-                  height: 36,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.only(left: 10, top: 4, bottom: 4),
-                          children: [
-                            for (var i = 0; i < tabs.length; i++) ...[
-                              _TabChip(
-                                label: tabDisplayName(tabs[i], t(context, 'app.tabNew')),
-                                isSelected: i == tabsState.selectedIndex,
-                                onTap: () => notifier.selectTab(i),
-                                onClose: () => notifier.closeTab(i),
-                              ),
-                              const SizedBox(width: 4),
-                            ],
-                          ],
-                        ),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Tab bar stile Xcode/macOS: piatto, bordo sottile, chip tondeggianti
+              Material(
+                color: theme.colorScheme.surfaceContainerHigh,
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border(bottom: BorderSide(color: theme.colorScheme.outline.withOpacity(0.5), width: 0.5)),
+                  ),
+                  child: SafeArea(
+                    bottom: false,
+                    child: SizedBox(
+                      height: 40,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.only(left: 10, top: 4, bottom: 4),
+                              children: [
+                                for (var i = 0; i < tabs.length; i++) ...[
+                                  _TabChip(
+                                    label: tabDisplayName(tabs[i], t(context, 'app.tabNew')),
+                                    isSelected: i == tabsState.selectedIndex,
+                                    onTap: () => notifier.selectTab(i),
+                                    onClose: () => notifier.closeTab(i),
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.add, size: 18),
+                            tooltip: t(context, 'app.newTab'),
+                            onPressed: () => notifier.addTab(),
+                            style: IconButton.styleFrom(
+                              minimumSize: const Size(32, 32),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.add, size: 18),
-                        tooltip: t(context, 'app.newTab'),
-                        onPressed: () => notifier.addTab(),
-                        style: IconButton.styleFrom(
-                          minimumSize: const Size(32, 32),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
+              Expanded(
+                child: IndexedStack(
+                  index: tabsState.selectedIndex.clamp(0, tabs.length > 0 ? tabs.length - 1 : 0),
+                  children: [
+                    for (var i = 0; i < tabs.length; i++)
+                      KeyedSubtree(key: ValueKey(tabs[i].id), child: _buildTabContent(tabs[i])),
+                  ],
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: IndexedStack(
-              index: tabsState.selectedIndex.clamp(0, tabs.length > 0 ? tabs.length - 1 : 0),
-              children: [
-                for (var i = 0; i < tabs.length; i++)
-                  KeyedSubtree(
-                    key: ValueKey(tabs[i].id),
-                    child: _buildTabContent(tabs[i]),
-                  ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
-    ),
-  ),
     );
   }
 }
@@ -136,12 +134,7 @@ Widget _buildTabContent(AppTab tab) {
 }
 
 class _TabChip extends StatelessWidget {
-  const _TabChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-    required this.onClose,
-  });
+  const _TabChip({required this.label, required this.isSelected, required this.onTap, required this.onClose});
 
   final String label;
   final bool isSelected;
@@ -183,11 +176,7 @@ class _TabChip extends StatelessWidget {
                   cursor: SystemMouseCursors.click,
                   child: GestureDetector(
                     onTap: onClose,
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    child: Icon(CupertinoIcons.xmark, size: 14, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ),
               ],

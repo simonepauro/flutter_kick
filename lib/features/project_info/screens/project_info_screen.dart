@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_kick/core/l10n/translation.dart';
 import 'package:flutter_kick/core/widgets/fk_copyable_error.dart';
+import 'package:flutter_kick/core/widgets/fk_expandable_section.dart';
 import 'package:flutter_kick/core/widgets/fk_scaffold.dart';
 
 import '../models/dependency_info.dart';
@@ -89,7 +91,134 @@ List<String> _sectionTextsTabIcons(FlutterProjectInfo info) {
   final iosText = info.iosAppIcons.map((e) => '${e.label} ${e.path}').join(' ') + (info.iosAppIconPath ?? '');
   final androidText =
       info.androidAppIcons.map((e) => '${e.label} ${e.path}').join(' ') + (info.androidAppIconPath ?? '');
-  return ['iOS $iosText Android $androidText', '${info.iosSplashPath ?? ''} ${info.androidSplashPath ?? ''}'];
+  final assetsFontsText =
+      '${info.assets.map((a) => a.path).join(' ')} ${info.fonts.map((f) => f.family).join(' ')}';
+  return ['iOS $iosText Android $androidText', '${info.iosSplashPath ?? ''} ${info.androidSplashPath ?? ''}', assetsFontsText];
+}
+
+String _formatAssetBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
+Widget _buildAssetsSectionWidget(BuildContext context, FlutterProjectInfo info) {
+  if (info.assets.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(t(context, 'projectInfo.noAssets')),
+    );
+  }
+  final totalFormatted = _formatAssetBytes(info.totalAssetSizeBytes);
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(CupertinoIcons.folder, size: 20, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            t(context, 'projectInfo.assetsList'),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            t(context, 'projectInfo.totalAssetSize', translationParams: {'size': totalFormatted}),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      ...info.assets.map(
+        (e) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SelectableText(
+                  e.path,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SelectableText(
+                _formatAssetBytes(e.sizeBytes),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _buildFontsSectionWidget(BuildContext context, FlutterProjectInfo info) {
+  if (info.fonts.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(t(context, 'projectInfo.noFonts')),
+    );
+  }
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(CupertinoIcons.textformat, size: 20, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            t(context, 'projectInfo.fontsList'),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      ...info.fonts.expand((f) => [
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                f.family,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            ...f.variants.map(
+              (v) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        v.assetPath,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                      ),
+                    ),
+                    if (v.weight != null || (v.style != null && v.style!.isNotEmpty))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          [
+                            if (v.weight != null) 'weight: ${v.weight}',
+                            if (v.style != null && v.style!.isNotEmpty) 'style: ${v.style}',
+                          ].join(', '),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ]),
+    ],
+  );
 }
 
 List<String> _sectionTextsTabSigning(FlutterProjectInfo info) {
@@ -216,7 +345,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
       children: [
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.project'),
             children: [
               _InfoRow(label: t(context, 'projectInfo.name'), value: info.name),
@@ -231,7 +360,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.environment'),
             children: [
               if (info.flutterVersion != null)
@@ -245,7 +374,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.platforms'),
             child: info.platforms.isEmpty
                 ? Padding(
@@ -270,7 +399,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(
               context,
               'projectInfo.dependenciesCount',
@@ -288,7 +417,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(
               context,
               'projectInfo.devDependenciesCount',
@@ -306,7 +435,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.path'),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -322,7 +451,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
           const SizedBox(height: 12),
           _wrapSection(
             context,
-            _SectionCard(
+            FkExpandableSection(
               title: t(context, 'projectInfo.buildSettingsIos'),
               children: _buildSettingsEntries(context, info.iosBuildSettings),
             ),
@@ -333,7 +462,7 @@ class _ProjectInfoTabBody extends ConsumerWidget {
           const SizedBox(height: 12),
           _wrapSection(
             context,
-            _SectionCard(
+            FkExpandableSection(
               title: t(context, 'projectInfo.buildSettingsAndroid'),
               children: _buildSettingsEntries(context, info.androidGradleSettings),
             ),
@@ -375,19 +504,18 @@ class _ProjectInfoTabBody extends ConsumerWidget {
   IconData _platformIcon(String platform) {
     switch (platform) {
       case 'android':
-        return Icons.android;
+        return Icons.android; // Cupertino non ha icona Android
       case 'ios':
-        return Icons.apple;
+        return CupertinoIcons.device_phone_portrait;
       case 'web':
-        return Icons.web;
+        return CupertinoIcons.globe;
       case 'macos':
-        return Icons.laptop_mac;
+        return Icons.laptop_mac; // Cupertino non ha icona laptop in questa versione
       case 'windows':
-        return Icons.desktop_windows;
       case 'linux':
         return Icons.computer;
       default:
-        return Icons.folder;
+        return CupertinoIcons.folder;
     }
   }
 }
@@ -432,7 +560,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
       children: [
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.flavorsAndroid'),
             child: info.androidFlavors.isEmpty
                 ? Padding(
@@ -447,7 +575,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
                           (f) => Chip(
                             label: Text(f),
                             avatar: Icon(
-                              Icons.layers_outlined,
+                              CupertinoIcons.square_stack_3d_up,
                               size: 18,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
@@ -461,7 +589,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.flavorsIos'),
             child: info.iosFlavors.isEmpty
                 ? Padding(
@@ -476,7 +604,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
                           (f) => Chip(
                             label: Text(f),
                             avatar: Icon(
-                              Icons.layers_outlined,
+                              CupertinoIcons.square_stack_3d_up,
                               size: 18,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
@@ -490,7 +618,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.envAndroid'),
             child: info.androidEnvFiles.isEmpty
                 ? Padding(
@@ -505,7 +633,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
                           (f) => Chip(
                             label: Text(f),
                             avatar: Icon(
-                              Icons.description_outlined,
+                              CupertinoIcons.doc_text,
                               size: 18,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
@@ -519,7 +647,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.envIos'),
             child: info.iosEnvFiles.isEmpty
                 ? Padding(
@@ -534,7 +662,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
                           (f) => Chip(
                             label: Text(f),
                             avatar: Icon(
-                              Icons.description_outlined,
+                              CupertinoIcons.doc_text,
                               size: 18,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
@@ -548,7 +676,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.launchJson'),
             child: info.launchJsonPath == null
                 ? Padding(
@@ -562,7 +690,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.play_circle_outline, size: 20, color: Theme.of(context).colorScheme.primary),
+                            Icon(CupertinoIcons.play_circle, size: 20, color: Theme.of(context).colorScheme.primary),
                             const SizedBox(width: 8),
                             SelectableText(
                               info.launchJsonPath!,
@@ -595,7 +723,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
                                         child: Row(
                                           children: [
                                             Icon(
-                                              Icons.settings,
+                                              CupertinoIcons.settings,
                                               size: 18,
                                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                                             ),
@@ -621,7 +749,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.envScripts'),
             child: info.envScripts.isEmpty
                 ? Padding(
@@ -664,7 +792,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.firebaseEnvs'),
             child: info.firebaseEnvs.isEmpty
                 ? Padding(
@@ -679,7 +807,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
                           (e) => Chip(
                             label: Text(e),
                             avatar: Icon(
-                              Icons.cloud_outlined,
+                              CupertinoIcons.cloud,
                               size: 18,
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
@@ -693,7 +821,7 @@ class _ProjectEnvTabBody extends StatelessWidget {
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.dartEnvSources'),
             child: info.dartEnvSourceFiles.isEmpty
                 ? Padding(
@@ -745,6 +873,7 @@ class _ProjectReleaseTabBody extends StatefulWidget {
 
 /// Prefs: JSON map projectPath -> (buildKey -> seconds), e.g. {"path": {"prod:android": 120}}.
 const _prefsKeyLastBuildDurations = 'release_last_build_durations';
+
 /// Prefs: JSON map projectPath -> (buildKey -> output). Output troncato a _maxCachedConsoleChars.
 const _prefsKeyConsoleOutputs = 'release_console_outputs';
 const _maxCachedConsoleChars = 50000;
@@ -793,10 +922,13 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
   final Map<String, DateTime> _buildStartTimes = {};
   final Map<String, int> _elapsedSecondsByKey = {};
   Timer? _buildTimer;
+
   /// Ultima durata build per buildKey (env:platform), persistita in prefs.
   final Map<String, int> _lastBuildDurationByKey = {};
+
   /// Path dell'artefatto (APK o cartella IPA) dopo build riuscita, per chiave envName:platform.
   final Map<String, String> _lastBuiltArtifactPaths = {};
+
   /// Output console per buildKey (env:platform). In memoria e in cache (prefs).
   final Map<String, String> _consoleOutputByKey = {};
   final Map<String, ScrollController> _consoleScrollControllers = {};
@@ -954,9 +1086,7 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
 
     final hasFlavors = widget.info.androidFlavors.isNotEmpty || widget.info.iosFlavors.isNotEmpty;
     final flavorArg = hasFlavors ? envName.toLowerCase() : null;
-    List<String> args = platform == _platformIos
-        ? ['build', 'ipa', '--release']
-        : ['build', 'apk', '--release'];
+    List<String> args = platform == _platformIos ? ['build', 'ipa', '--release'] : ['build', 'apk', '--release'];
     if (flavorArg != null) args.addAll(['--flavor', flavorArg]);
     final executable = await _resolveFlutterExecutable(widget.projectPath);
 
@@ -1060,7 +1190,11 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
       final platformLabel = platform == _platformIos ? 'iOS' : 'Android';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ok ? '${t(context, 'release.done')}: $envName ($platformLabel)' : '${t(context, 'release.error')}: $envName ($platformLabel)'),
+          content: Text(
+            ok
+                ? '${t(context, 'release.done')}: $envName ($platformLabel)'
+                : '${t(context, 'release.error')}: $envName ($platformLabel)',
+          ),
           backgroundColor: ok ? Colors.green.shade700 : Colors.red.shade700,
         ),
       );
@@ -1116,7 +1250,8 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
           final iosController = _hasIos ? _consoleScrollControllers[iosKey] : null;
           final androidOutput = _consoleOutputByKey[androidKey] ?? '';
           final iosOutput = _consoleOutputByKey[iosKey] ?? '';
-          final showAndroidConsole = androidController != null && (androidOutput.isNotEmpty || _runningBuilds.contains(androidKey));
+          final showAndroidConsole =
+              androidController != null && (androidOutput.isNotEmpty || _runningBuilds.contains(androidKey));
           final showIosConsole = iosController != null && (iosOutput.isNotEmpty || _runningBuilds.contains(iosKey));
           return [
             Padding(padding: const EdgeInsets.only(bottom: 12), child: wrapped),
@@ -1190,20 +1325,17 @@ class _ReleaseEnvCard extends StatelessWidget {
     final anyLoading = isBuildingAndroid || isBuildingIos;
     final hasDurationAndroid = lastBuildDurationSecondsAndroid != null && !anyLoading;
     final hasDurationIos = lastBuildDurationSecondsIos != null && !anyLoading;
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(envName, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                ),
-                FilledButton.icon(
+    return FkExpandableSection(
+      title: envName,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: const SizedBox.shrink(),
+              ),
+              FilledButton.icon(
                   onPressed: isBuildingAndroid ? null : onReleaseAndroid,
                   icon: isBuildingAndroid
                       ? SizedBox(
@@ -1211,7 +1343,7 @@ class _ReleaseEnvCard extends StatelessWidget {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
                         )
-                      : const Icon(Icons.android_outlined, size: 20),
+                      : const Icon(Icons.android, size: 20),
                   label: Text(isBuildingAndroid ? buildingAndroidLabel : t(context, 'release.buildAndroid')),
                 ),
                 if (androidArtifactPath != null && !isBuildingAndroid) ...[
@@ -1221,15 +1353,16 @@ class _ReleaseEnvCard extends StatelessWidget {
                       final opened = await revealInFinder(androidArtifactPath!);
                       if (context.mounted && !opened) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(t(context, 'release.artifactNotFound')), backgroundColor: Colors.orange.shade700),
+                          SnackBar(
+                            content: Text(t(context, 'release.artifactNotFound')),
+                            backgroundColor: Colors.orange.shade700,
+                          ),
                         );
                       }
                     },
-                    icon: const Icon(Icons.folder_open, size: 20),
+                    icon: const Icon(CupertinoIcons.folder_fill, size: 20),
                     tooltip: t(context, 'release.showInFinder'),
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(40, 40),
-                    ),
+                    style: IconButton.styleFrom(minimumSize: const Size(40, 40)),
                   ),
                 ],
                 if (hasIos) ...[
@@ -1242,7 +1375,7 @@ class _ReleaseEnvCard extends StatelessWidget {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
                           )
-                        : const Icon(Icons.apple, size: 20),
+                        : const Icon(CupertinoIcons.device_phone_portrait, size: 20),
                     label: Text(isBuildingIos ? buildingIosLabel : t(context, 'release.buildIos')),
                   ),
                   if (iosArtifactPath != null && !isBuildingIos) ...[
@@ -1252,56 +1385,56 @@ class _ReleaseEnvCard extends StatelessWidget {
                         final opened = await revealInFinder(iosArtifactPath!);
                         if (context.mounted && !opened) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(t(context, 'release.artifactNotFound')), backgroundColor: Colors.orange.shade700),
+                            SnackBar(
+                              content: Text(t(context, 'release.artifactNotFound')),
+                              backgroundColor: Colors.orange.shade700,
+                            ),
                           );
                         }
                       },
-                      icon: const Icon(Icons.folder_open, size: 20),
+                      icon: const Icon(CupertinoIcons.folder_fill, size: 20),
                       tooltip: t(context, 'release.showInFinder'),
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size(40, 40),
-                      ),
+                      style: IconButton.styleFrom(minimumSize: const Size(40, 40)),
                     ),
                   ],
                 ],
               ],
             ),
-            if (hasDurationAndroid || hasDurationIos)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 2,
-                  children: [
-                    if (hasDurationAndroid)
-                      Text(
-                        t(
-                          context,
-                          'release.lastBuildTimeWithPlatform',
-                          translationParams: {
-                            'platform': t(context, 'release.platformAndroid'),
-                            'duration': _formatBuildDuration(lastBuildDurationSecondsAndroid!),
-                          },
-                        ),
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          if (hasDurationAndroid || hasDurationIos)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  if (hasDurationAndroid)
+                    Text(
+                      t(
+                        context,
+                        'release.lastBuildTimeWithPlatform',
+                        translationParams: {
+                          'platform': t(context, 'release.platformAndroid'),
+                          'duration': _formatBuildDuration(lastBuildDurationSecondsAndroid!),
+                        },
                       ),
-                    if (hasDurationIos)
-                      Text(
-                        t(
-                          context,
-                          'release.lastBuildTimeWithPlatform',
-                          translationParams: {
-                            'platform': t(context, 'release.platformIos'),
-                            'duration': _formatBuildDuration(lastBuildDurationSecondsIos!),
-                          },
-                        ),
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  if (hasDurationIos)
+                    Text(
+                      t(
+                        context,
+                        'release.lastBuildTimeWithPlatform',
+                        translationParams: {
+                          'platform': t(context, 'release.platformIos'),
+                          'duration': _formatBuildDuration(lastBuildDurationSecondsIos!),
+                        },
                       ),
-                  ],
-                ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                ],
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -1357,7 +1490,7 @@ class _ReleaseConsole extends StatelessWidget {
             if (!isBuilding && output.isNotEmpty)
               TextButton.icon(
                 onPressed: onClear,
-                icon: const Icon(Icons.clear_all, size: 18),
+                icon: const Icon(CupertinoIcons.clear, size: 18),
                 label: Text(t(context, 'release.consoleClear')),
               ),
           ],
@@ -1457,7 +1590,7 @@ class _ProjectSigningTabBody extends StatelessWidget {
         if (hasIos) ...[
           _wrapSection(
             context,
-            _SectionCard(
+            FkExpandableSection(
               title: t(context, 'projectInfo.signingIos'),
               children: iosEmpty
                   ? [
@@ -1477,7 +1610,7 @@ class _ProjectSigningTabBody extends StatelessWidget {
         if (hasAndroid) ...[
           _wrapSection(
             context,
-            _SectionCard(
+            FkExpandableSection(
               title: t(context, 'projectInfo.signingAndroid'),
               children: androidEmpty
                   ? [
@@ -1486,9 +1619,19 @@ class _ProjectSigningTabBody extends StatelessWidget {
                         child: Text(t(context, 'projectInfo.noSigningConfig')),
                       ),
                     ]
-                  : (info.androidSigningSettings.keys.toList()..sort())
-                        .map((k) => _InfoRow(label: k, value: info.androidSigningSettings[k]!))
-                        .toList(),
+                  : [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          t(context, 'projectInfo.signingAndroidPropertiesHint'),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                      ...(info.androidSigningSettings.keys.toList()..sort())
+                          .map((k) => _InfoRow(label: k, value: info.androidSigningSettings[k]!)),
+                    ],
             ),
             sectionIndex++,
           ),
@@ -1532,7 +1675,8 @@ class _ProjectAppIconsTabBody extends StatelessWidget {
         info.iosAppIconPath != null ||
         info.androidAppIconPath != null;
     final hasAnySplash = info.iosSplashPath != null || info.androidSplashPath != null;
-    if (!hasAnyIcon && !hasAnySplash) {
+    final hasAssetsOrFonts = info.assets.isNotEmpty || info.fonts.isNotEmpty;
+    if (!hasAnyIcon && !hasAnySplash && !hasAssetsOrFonts) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -1546,12 +1690,14 @@ class _ProjectAppIconsTabBody extends StatelessWidget {
         ),
       );
     }
+    var sectionIndex = 0;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (hasAnyIcon || hasAnySplash) ...[
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.appIcons'),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1574,7 +1720,7 @@ class _ProjectAppIconsTabBody extends StatelessWidget {
                             (e) => _AppIconTile(
                               platformLabel: e.label,
                               iconPath: e.path,
-                              iconData: Icons.apple,
+                              iconData: CupertinoIcons.device_phone_portrait,
                               isMain: e.isMain,
                             ),
                           )
@@ -1592,7 +1738,7 @@ class _ProjectAppIconsTabBody extends StatelessWidget {
                     _AppIconTile(
                       platformLabel: t(context, 'projectInfo.iosIcon'),
                       iconPath: info.iosAppIconPath,
-                      iconData: Icons.apple,
+                      iconData: CupertinoIcons.device_phone_portrait,
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -1636,12 +1782,12 @@ class _ProjectAppIconsTabBody extends StatelessWidget {
               ),
             ),
           ),
-          0,
+          sectionIndex++,
         ),
         const SizedBox(height: 12),
         _wrapSection(
           context,
-          _SectionCard(
+          FkExpandableSection(
             title: t(context, 'projectInfo.splashScreen'),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1651,7 +1797,7 @@ class _ProjectAppIconsTabBody extends StatelessWidget {
                     child: _AppIconTile(
                       platformLabel: t(context, 'projectInfo.iosIcon'),
                       iconPath: info.iosSplashPath,
-                      iconData: Icons.apple,
+                      iconData: CupertinoIcons.device_phone_portrait,
                       size: 120,
                     ),
                   ),
@@ -1668,7 +1814,24 @@ class _ProjectAppIconsTabBody extends StatelessWidget {
               ),
             ),
           ),
-          1,
+          sectionIndex++,
+        ),
+        ],
+        const SizedBox(height: 12),
+        _wrapSection(
+          context,
+          FkExpandableSection(
+            title: t(context, 'projectInfo.assetsSection'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildAssetsSectionWidget(context, info),
+                const SizedBox(height: 16),
+                _buildFontsSectionWidget(context, info),
+              ],
+            ),
+          ),
+          sectionIndex++,
         ),
       ],
     );
@@ -1687,7 +1850,7 @@ class ProjectInfoScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Text(t(context, 'projectInfo.title')),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).pop()),
+        leading: IconButton(icon: const Icon(CupertinoIcons.back), onPressed: () => Navigator.of(context).pop()),
       ),
       body: ProjectInfoPanel(projectPath: projectPath, tabIndex: 0),
     );
@@ -1769,7 +1932,7 @@ class _AppIconTile extends StatelessWidget {
           const SizedBox(height: 8),
           FilledButton.tonalIcon(
             onPressed: () => revealInFinder(iconPath!),
-            icon: const Icon(Icons.folder_open, size: 18),
+            icon: const Icon(CupertinoIcons.folder_fill, size: 18),
             label: Text(t(context, 'projectInfo.showInFinder')),
           ),
         ],
@@ -1869,31 +2032,6 @@ class _StatusChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  _SectionCard({required this.title, this.children = const [], this.child}) : assert(children.isEmpty || child == null);
-
-  final String title;
-  final List<Widget> children;
-  final Widget? child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            if (child != null) child! else ...children,
-          ],
-        ),
       ),
     );
   }

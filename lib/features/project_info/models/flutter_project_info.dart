@@ -1,5 +1,34 @@
 import 'dependency_info.dart';
 
+/// Singolo asset del progetto (path relativo e dimensione in byte).
+class AssetEntry {
+  const AssetEntry({required this.path, required this.sizeBytes});
+
+  final String path;
+  final int sizeBytes;
+}
+
+/// Variante di un font (file .ttf/.otf con eventuale peso e stile).
+class FontVariantEntry {
+  const FontVariantEntry({
+    required this.assetPath,
+    this.weight,
+    this.style,
+  });
+
+  final String assetPath;
+  final int? weight;
+  final String? style;
+}
+
+/// Famiglia di font dichiarata nel pubspec (nome e lista di varianti).
+class FontFamilyInfo {
+  const FontFamilyInfo({required this.family, required this.variants});
+
+  final String family;
+  final List<FontVariantEntry> variants;
+}
+
 /// Voce nella lista delle icone app (iOS .appiconset o Android mipmap/drawable).
 class AppIconEntry {
   const AppIconEntry({required this.path, required this.label, required this.isMain});
@@ -57,6 +86,9 @@ class FlutterProjectInfo {
     this.androidGradleSettings = const {},
     this.iosSigningSettings = const {},
     this.androidSigningSettings = const {},
+    this.assets = const [],
+    this.totalAssetSizeBytes = 0,
+    this.fonts = const [],
   });
 
   final String projectPath;
@@ -128,4 +160,13 @@ class FlutterProjectInfo {
 
   /// Impostazioni di signing Android (signingConfigs: storeFile, keyAlias, ecc.).
   final Map<String, String> androidSigningSettings;
+
+  /// Elenco degli asset dichiarati nel pubspec (path relativo e dimensione).
+  final List<AssetEntry> assets;
+
+  /// Peso totale in byte di tutti gli asset.
+  final int totalAssetSizeBytes;
+
+  /// Font dichiarati nel pubspec (famiglia e varianti).
+  final List<FontFamilyInfo> fonts;
 }

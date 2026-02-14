@@ -1,7 +1,9 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_kick/core/l10n/translation.dart';
+import 'package:flutter_kick/core/widgets/fk_adaptive_tab_selector.dart';
 import 'package:flutter_kick/core/widgets/fk_find_in_page_bar.dart';
 import 'package:flutter_kick/features/project_info/project_info.dart';
 import 'package:flutter_kick/features/project_info/screens/project_info_screen.dart';
@@ -24,9 +26,12 @@ class _TabContentProjectState extends ConsumerState<TabContentProject> {
   bool _findBarVisible = false;
   String _searchQuery = '';
   int _searchMatchIndex = 0;
+
   /// Una lista di key per segmento, così tutti i segmenti restano montati (IndexedStack) senza conflitti.
-  late final List<List<GlobalKey>> _sectionKeysPerSegment =
-      List.generate(_kSegmentCount, (_) => List.generate(10, (_) => GlobalKey()));
+  late final List<List<GlobalKey>> _sectionKeysPerSegment = List.generate(
+    _kSegmentCount,
+    (_) => List.generate(10, (_) => GlobalKey()),
+  );
   final FocusNode _panelFocusNode = FocusNode();
 
   @override
@@ -99,39 +104,19 @@ class _TabContentProjectState extends ConsumerState<TabContentProject> {
                 Row(
                   children: [
                     Expanded(
-                      child: SegmentedButton<int>(
-                        showSelectedIcon: false,
+                      child: FkAdaptiveTabSelector(
                         segments: [
-                          ButtonSegment(
-                            value: 0,
-                            label: Text(t(context, 'projectInfo.tabInfo')),
-                            icon: const Icon(Icons.info_outline, size: 18),
-                          ),
-                          ButtonSegment(
-                            value: 1,
-                            label: Text(t(context, 'projectInfo.tabEnv')),
-                            icon: const Icon(Icons.cloud_outlined, size: 18),
-                          ),
-                          ButtonSegment(
-                            value: 2,
-                            label: Text(t(context, 'projectInfo.tabIcons')),
-                            icon: const Icon(Icons.image_outlined, size: 18),
-                          ),
-                          ButtonSegment(
-                            value: 3,
-                            label: Text(t(context, 'projectInfo.tabSigning')),
-                            icon: const Icon(Icons.badge_outlined, size: 18),
-                          ),
-                          ButtonSegment(
-                            value: 4,
-                            label: Text(t(context, 'projectInfo.tabRelease')),
-                            icon: const Icon(Icons.rocket_launch_outlined, size: 18),
-                          ),
+                          (value: 0, label: t(context, 'projectInfo.tabInfo'), icon: CupertinoIcons.info_circle),
+                          (value: 1, label: t(context, 'projectInfo.tabEnv'), icon: CupertinoIcons.cloud),
+                          (value: 2, label: t(context, 'projectInfo.tabIcons'), icon: CupertinoIcons.photo),
+                          (value: 3, label: t(context, 'projectInfo.tabSigning'), icon: CupertinoIcons.lock_shield),
+                          (value: 4, label: t(context, 'projectInfo.tabRelease'), icon: CupertinoIcons.rocket),
                         ],
-                        selected: {_selectedTabIndex},
-                        onSelectionChanged: (Set<int> selected) {
+                        selected: _selectedTabIndex,
+                        iconSize: 18,
+                        onSelectionChanged: (index) {
                           setState(() {
-                            _selectedTabIndex = selected.first;
+                            _selectedTabIndex = index;
                             _searchMatchIndex = 0;
                           });
                         },
@@ -139,7 +124,7 @@ class _TabContentProjectState extends ConsumerState<TabContentProject> {
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.search, size: 20),
+                      icon: const Icon(CupertinoIcons.search, size: 20),
                       tooltip: '${t(context, 'findInPage.hint')} (⌘F)',
                       onPressed: () => setState(() {
                         _findBarVisible = true;
@@ -160,8 +145,7 @@ class _TabContentProjectState extends ConsumerState<TabContentProject> {
                     matchCount: searchMatchCount,
                     onPrevious: searchMatchCount > 0
                         ? () {
-                            final prev =
-                                (searchMatchIndex - 1 + searchMatchCount) % searchMatchCount;
+                            final prev = (searchMatchIndex - 1 + searchMatchCount) % searchMatchCount;
                             setState(() => _searchMatchIndex = prev);
                             _scrollToSection(searchMatches[prev]);
                           }

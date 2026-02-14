@@ -101,6 +101,10 @@ class ProjectInfoService {
     final androidGradleSettings = await _readAndroidGradleSettings(dir.path);
     final iosSigningSettings = await _readIosSigningSettings(dir.path);
     final androidSigningSettings = await _readAndroidSigningSettings(dir.path);
+    final (assets, totalAssetSizeBytes) = await _parseAssets(dir.path, doc);
+    final fonts = _parseFonts(doc);
+    final fontTotalBytes = await _sumFontSizes(dir.path, fonts);
+    final totalWithFonts = totalAssetSizeBytes + fontTotalBytes;
 
     developer.log('load: completato → platforms=$platforms, flutterVersion=$flutterVersion', name: _logName);
 
@@ -134,7 +138,94 @@ class ProjectInfoService {
       androidGradleSettings: androidGradleSettings,
       iosSigningSettings: iosSigningSettings,
       androidSigningSettings: androidSigningSettings,
+      assets: assets,
+      totalAssetSizeBytes: totalWithFonts,
+      fonts: fonts,
     );
+  }
+
+  /// Estrae gli asset da pubspec (flutter.assets), espande le cartelle e calcola le dimensioni.
+  Future<(List<AssetEntry>, int)> _parseAssets(String projectPath, YamlMap doc) async {
+    final list = <AssetEntry>[];
+    final flutter = doc['flutter'];
+    if (flutter is! YamlMap) return (list, 0);
+    final raw = flutter['assets'];
+    if (raw is! YamlList) return (list, 0);
+    for (final item in raw) {
+      final path = _string(item);
+      if (path == null || path.isEmpty) continue;
+      final normalized = path.replaceAll(r'\', '/').replaceFirst(RegExp(r'/$'), '');
+      final fullPath = '$projectPath/$normalized';
+      final entity = FileSystemEntity.typeSync(fullPath, followLinks: false);
+      if (entity == FileSystemEntityType.notFound) continue;
+      if (entity == FileSystemEntityType.file) {
+        final file = File(fullPath);
+        try {
+          final size = await file.length();
+          list.add(AssetEntry(path: normalized, sizeBytes: size));
+        } catch (_) {}
+        continue;
+      }
+      if (entity == FileSystemEntityType.directory) {
+        await for (final f in Directory(fullPath).list(recursive: true, followLinks: false)) {
+          if (f is! File) continue;
+          final rel = f.path.substring(projectPath.length + 1).replaceAll(r'\', '/');
+          try {
+            final size = await f.length();
+            list.add(AssetEntry(path: rel, sizeBytes: size));
+          } catch (_) {}
+        }
+      }
+    }
+    list.sort((a, b) => a.path.compareTo(b.path));
+    final total = list.fold<int>(0, (s, e) => s + e.sizeBytes);
+    developer.log('_parseAssets: ${list.length} file, $total bytes', name: _logName);
+    return (list, total);
+  }
+
+  /// Estrae i font da pubspec (flutter.fonts).
+  List<FontFamilyInfo> _parseFonts(YamlMap doc) {
+    final result = <FontFamilyInfo>[];
+    final flutter = doc['flutter'];
+    if (flutter is! YamlMap) return result;
+    final raw = flutter['fonts'];
+    if (raw is! YamlList) return result;
+    for (final item in raw) {
+      if (item is! YamlMap) continue;
+      final family = _string(item['family']);
+      if (family == null || family.isEmpty) continue;
+      final fontsList = item['fonts'];
+      if (fontsList is! YamlList) continue;
+      final variants = <FontVariantEntry>[];
+      for (final v in fontsList) {
+        if (v is! YamlMap) continue;
+        final assetPath = _string(v['asset']);
+        if (assetPath == null || assetPath.isEmpty) continue;
+        final weight = v['weight'] is int ? v['weight'] as int : null;
+        final style = _string(v['style']);
+        variants.add(FontVariantEntry(assetPath: assetPath, weight: weight, style: style));
+      }
+      if (variants.isNotEmpty) result.add(FontFamilyInfo(family: family, variants: variants));
+    }
+    developer.log('_parseFonts: ${result.length} famiglie', name: _logName);
+    return result;
+  }
+
+  /// Somma le dimensioni in byte di tutti i file font dichiarati nel pubspec.
+  Future<int> _sumFontSizes(String projectPath, List<FontFamilyInfo> fonts) async {
+    var total = 0;
+    for (final f in fonts) {
+      for (final v in f.variants) {
+        final path = v.assetPath.replaceAll(r'\', '/');
+        final fullPath = '$projectPath/$path';
+        try {
+          final file = File(fullPath);
+          if (await file.exists()) total += await file.length();
+        } catch (_) {}
+      }
+    }
+    if (total > 0) developer.log('_sumFontSizes: $total bytes', name: _logName);
+    return total;
   }
 
   /// Chiavi di build settings iOS relative alla firma (code sign, team, provisioning).
@@ -199,6 +290,9 @@ class ProjectInfoService {
   }
 
   /// Legge le impostazioni di signing Android da build.gradle / build.gradle.kts (signingConfigs).
+  /// Risolve valori da proprietà quando storeFile/keyAlias ecc. sono riferiti tramite variabili
+  /// (es. findProperty("KEYSTORE_PATH"), RELEASE_STORE_FILE) usando gradle.properties,
+  /// local.properties e keystore.properties.
   Future<Map<String, String>> _readAndroidSigningSettings(String projectPath) async {
     final result = <String, String>{};
     for (final filename in ['build.gradle.kts', 'build.gradle']) {
@@ -213,6 +307,8 @@ class ProjectInfoService {
           _extractAndroidSigningGroovy(content, result);
         }
         if (result.isNotEmpty) {
+          final props = await _loadAndroidPropertyFiles(projectPath);
+          _resolveAndroidSigningFromProperties(result, props);
           developer.log('_readAndroidSigningSettings: letti ${result.length} da $filename', name: _logName);
           return result;
         }
@@ -222,6 +318,75 @@ class ProjectInfoService {
       break;
     }
     return result;
+  }
+
+  /// Carica proprietà da gradle.properties, local.properties, keystore.properties (root e android/).
+  Future<Map<String, String>> _loadAndroidPropertyFiles(String projectPath) async {
+    final out = <String, String>{};
+    final paths = [
+      '$projectPath/gradle.properties',
+      '$projectPath/android/gradle.properties',
+      '$projectPath/local.properties',
+      '$projectPath/android/local.properties',
+      '$projectPath/keystore.properties',
+      '$projectPath/android/keystore.properties',
+    ];
+    for (final p in paths) {
+      final file = File(p);
+      if (!await file.exists()) continue;
+      try {
+        final content = await file.readAsString();
+        _parsePropertiesFile(content, out);
+      } catch (e, st) {
+        developer.log('_loadAndroidPropertyFiles: skip $p', name: _logName, error: e, stackTrace: st);
+      }
+    }
+    return out;
+  }
+
+  /// Parsing semplice di file .properties (key=value, # commenti).
+  void _parsePropertiesFile(String content, Map<String, String> out) {
+    var line = StringBuffer();
+    for (final raw in content.split('\n')) {
+      final trimmed = raw.trimRight();
+      if (trimmed.endsWith('\\')) {
+        line.write(trimmed.substring(0, trimmed.length - 1).trimRight());
+        continue;
+      }
+      line.write(trimmed);
+      final s = line.toString().trim();
+      line.clear();
+      if (s.isEmpty || s.startsWith('#') || s.startsWith('!')) continue;
+      final eq = s.indexOf('=');
+      if (eq <= 0) continue;
+      final key = s.substring(0, eq).trim();
+      final value = s.substring(eq + 1).trim();
+      if (key.isEmpty) continue;
+      out[key] = value;
+    }
+  }
+
+  /// Sostituisce "(da proprietà / variabile)" con valore risolto o con "proprietà: NOME" / "proprietà: NOME (non impostata)".
+  void _resolveAndroidSigningFromProperties(Map<String, String> result, Map<String, String> props) {
+    const placeholder = '(da proprietà / variabile)';
+    final keys = result.keys.toList();
+    for (final k in keys) {
+      if (k.startsWith('_')) continue;
+      if (result[k] != placeholder) continue;
+      final propKey = result['_${k}Property'];
+      result.remove('_${k}Property');
+      if (propKey == null || propKey.isEmpty) {
+        result[k] = '(variabile o espressione non riconosciuta)';
+        continue;
+      }
+      final resolved = props[propKey];
+      if (resolved != null && resolved.isNotEmpty) {
+        result[k] = resolved;
+      } else {
+        result[k] = 'proprietà: $propKey (non impostata in gradle.properties / local.properties / keystore.properties)';
+      }
+    }
+    result.removeWhere((key, _) => key.startsWith('_'));
   }
 
   void _extractAndroidSigningKts(String content, Map<String, String> out) {
@@ -278,19 +443,45 @@ class ProjectInfoService {
       final storeFileProperty = RegExp(
         r'storeFile\s*=\s*file\s*\((?:rootProject\.)?file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)',
       ).firstMatch(block);
-      if (storeFileProperty != null) out['storeFile'] = storeFileProperty.group(1)!.trim();
-      if (!out.containsKey('storeFile') && RegExp(r'storeFile\s*=').hasMatch(block)) {
+      if (storeFileProperty != null) {
+        out['storeFile'] = storeFileProperty.group(1)!.trim();
+      } else if (RegExp(r'storeFile\s*=').hasMatch(block)) {
+        final propName = _extractKtsPropertyName(block, 'storeFile');
         out['storeFile'] = '(da proprietà / variabile)';
+        if (propName != null && propName.isNotEmpty) out['_storeFileProperty'] = propName;
       }
     }
-    final storePassword = RegExp(r'storePassword\s*=\s*[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(block);
-    if (storePassword != null) out['storePassword'] = storePassword.group(1)!.trim();
-    final keyAlias = RegExp(r'keyAlias\s*=\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(block);
-    if (keyAlias != null) out['keyAlias'] = keyAlias.group(1)!.trim();
-    final keyPassword = RegExp(r'keyPassword\s*=\s*[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(block);
-    if (keyPassword != null) out['keyPassword'] = keyPassword.group(1)!.trim();
+    _extractKtsSigningLiteralOrProperty(block, 'storePassword', out);
+    _extractKtsSigningLiteralOrProperty(block, 'keyAlias', out);
+    _extractKtsSigningLiteralOrProperty(block, 'keyPassword', out);
     final storeType = RegExp(r'storeType\s*=\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(block);
     if (storeType != null) out['storeType'] = storeType.group(1)!.trim();
+  }
+
+  /// Estrae il nome della proprietà in KTS (es. findProperty("KEY"), extra["key"]) dopo la chiave [key].
+  String? _extractKtsPropertyName(String block, String key) {
+    final keyMatch = RegExp(RegExp.escape(key) + r'\s*=').firstMatch(block);
+    if (keyMatch == null) return null;
+    final rest = block.substring(keyMatch.end);
+    final findProp = RegExp(r'findProperty\s*\(\s*["\x27]([^"\x27]+)["\x27]\s*\)').firstMatch(rest);
+    if (findProp != null) return findProp.group(1)!.trim();
+    final extra = RegExp(r'extra\s*\[\s*["\x27]([^"\x27]+)["\x27]\s*\]').firstMatch(rest);
+    if (extra != null) return extra.group(1)!.trim();
+    return null;
+  }
+
+  void _extractKtsSigningLiteralOrProperty(String block, String key, Map<String, String> out) {
+    final literal = RegExp(key + r'\s*=\s*["\x27]([^\x22\x27]*)["\x27]').firstMatch(block);
+    if (literal != null) {
+      out[key] = literal.group(1)!.trim();
+      return;
+    }
+    if (!RegExp(key + r'\s*=').hasMatch(block)) return;
+    final propName = _extractKtsPropertyName(block, key);
+    if (propName != null && propName.isNotEmpty) {
+      out[key] = '(da proprietà / variabile)';
+      out['_${key}Property'] = propName;
+    }
   }
 
   void _extractAndroidSigningGroovy(String content, Map<String, String> out) {
@@ -312,20 +503,33 @@ class ProjectInfoService {
   }
 
   bool _extractGroovySigningEntry(String block, Map<String, String> out) {
-    final storeFile = RegExp(r'storeFile\s+file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)').firstMatch(block);
-    if (storeFile != null) out['storeFile'] = storeFile.group(1)!.trim();
-    if (!out.containsKey('storeFile') && RegExp(r'storeFile\s+').hasMatch(block)) {
+    final storeFileLiteral = RegExp(r'storeFile\s+file\s*\(\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*\)').firstMatch(block);
+    if (storeFileLiteral != null) {
+      out['storeFile'] = storeFileLiteral.group(1)!.trim();
+    } else if (RegExp(r'storeFile\s+').hasMatch(block)) {
       out['storeFile'] = '(da proprietà / variabile)';
+      final varName = RegExp(r'storeFile\s+file\s*\(\s*(\w+)\s*\)').firstMatch(block);
+      if (varName != null) out['_storeFileProperty'] = varName.group(1)!.trim();
     }
-    final storePassword = RegExp(r'storePassword\s+[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(block);
-    if (storePassword != null) out['storePassword'] = storePassword.group(1)!.trim();
-    final keyAlias = RegExp(r'keyAlias\s+[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(block);
-    if (keyAlias != null) out['keyAlias'] = keyAlias.group(1)!.trim();
-    final keyPassword = RegExp(r'keyPassword\s+[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(block);
-    if (keyPassword != null) out['keyPassword'] = keyPassword.group(1)!.trim();
+    _extractGroovySigningLiteralOrVar(block, 'storePassword', out);
+    _extractGroovySigningLiteralOrVar(block, 'keyAlias', out);
+    _extractGroovySigningLiteralOrVar(block, 'keyPassword', out);
     final storeType = RegExp(r'storeType\s+[\x22\x27]([^\x22\x27]+)[\x22\x27]').firstMatch(block);
     if (storeType != null) out['storeType'] = storeType.group(1)!.trim();
     return out.isNotEmpty;
+  }
+
+  void _extractGroovySigningLiteralOrVar(String block, String key, Map<String, String> out) {
+    final literal = RegExp(key + r'\s+[\x22\x27]([^\x22\x27]*)[\x22\x27]').firstMatch(block);
+    if (literal != null) {
+      out[key] = literal.group(1)!.trim();
+      return;
+    }
+    final varMatch = RegExp(key + r'\s+(\w+)').firstMatch(block);
+    if (varMatch != null) {
+      out[key] = '(da proprietà / variabile)';
+      out['_${key}Property'] = varMatch.group(1)!.trim();
+    }
   }
 
   /// Estrae il contenuto del primo blocco con chiave [blockName] (es. signingConfigs { ... }).

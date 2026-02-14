@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,7 +28,7 @@ class FKProjectDetectionStatus extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20),
+                Icon(CupertinoIcons.checkmark_circle_fill, color: Theme.of(context).colorScheme.primary, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   t(context, 'detection.flutterProject'),
@@ -43,7 +44,7 @@ class FKProjectDetectionStatus extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.warning_amber_rounded, color: Theme.of(context).colorScheme.error, size: 20),
+              Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Theme.of(context).colorScheme.error, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

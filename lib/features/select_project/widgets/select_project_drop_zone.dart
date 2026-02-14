@@ -1,4 +1,5 @@
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_kick/core/l10n/translation.dart';
 import 'package:flutter_kick/features/select_project/constants/select_project_constants.dart';
@@ -38,7 +39,7 @@ class SelectProjectDropZone extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              isDragging ? Icons.folder_open : Icons.folder,
+              isDragging ? CupertinoIcons.folder_fill : CupertinoIcons.folder,
               size: kSelectProjectDropZoneIconSize,
               color: _dropZoneIconColor(colorScheme),
             ),

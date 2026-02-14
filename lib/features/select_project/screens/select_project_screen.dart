@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,8 @@ import 'package:flutter_kick/features/select_project/providers/recent_projects_p
 import 'package:flutter_kick/features/select_project/providers/select_project_provider.dart';
 import 'package:flutter_kick/features/select_project/widgets/select_project_drop_zone.dart';
 import 'package:flutter_kick/features/select_project/widgets/select_project_header.dart';
+import 'package:flutter_kick/core/widgets/fk_adaptive_tab_selector.dart';
+import 'package:flutter_kick/core/widgets/fk_expandable_section.dart';
 import 'package:flutter_kick/core/widgets/fk_find_in_page_bar.dart';
 import 'package:flutter_kick/core/widgets/fk_logo_app_bar.dart';
 import 'package:flutter_kick/features/select_project/widgets/select_project_path_field.dart';
@@ -258,104 +261,84 @@ class _SelectProjectScreenState extends ConsumerState<SelectProjectScreen> {
                                     Row(
                                       children: [
                                         Expanded(
-                                          child:                                   SegmentedButton<int>(
-                                    showSelectedIcon: false,
-                                    segments: [
-                                      ButtonSegment(
-                                        value: 0,
-                                        label: Text(t(context, 'projectInfo.tabInfo')),
-                                        icon: const Icon(Icons.info_outline),
-                                      ),
-                                      ButtonSegment(
-                                        value: 1,
-                                        label: Text(t(context, 'projectInfo.tabEnv')),
-                                        icon: const Icon(Icons.cloud_outlined),
-                                      ),
-                                      ButtonSegment(
-                                        value: 2,
-                                        label: Text(t(context, 'projectInfo.tabIcons')),
-                                        icon: const Icon(Icons.image_outlined),
-                                      ),
-                                      ButtonSegment(
-                                        value: 3,
-                                        label: Text(t(context, 'projectInfo.tabSigning')),
-                                        icon: const Icon(Icons.badge_outlined),
-                                      ),
-                                      ButtonSegment(
-                                        value: 4,
-                                        label: Text(t(context, 'projectInfo.tabRelease')),
-                                        icon: const Icon(Icons.rocket_launch_outlined),
-                                      ),
-                                    ],
-                                    selected: {_selectedTabIndex},
-                                    onSelectionChanged: (Set<int> selected) {
-                                      setState(() {
-                                        _selectedTabIndex = selected.first;
-                                        _searchMatchIndex = 0;
-                                      });
-                                    },
+                                          child: FkAdaptiveTabSelector(
+                                            segments: [
+                                              (value: 0, label: t(context, 'projectInfo.tabInfo'), icon: CupertinoIcons.info_circle),
+                                              (value: 1, label: t(context, 'projectInfo.tabEnv'), icon: CupertinoIcons.cloud),
+                                              (value: 2, label: t(context, 'projectInfo.tabIcons'), icon: CupertinoIcons.photo),
+                                              (value: 3, label: t(context, 'projectInfo.tabSigning'), icon: CupertinoIcons.lock_shield),
+                                              (value: 4, label: t(context, 'projectInfo.tabRelease'), icon: CupertinoIcons.rocket),
+                                            ],
+                                            selected: _selectedTabIndex,
+                                            onSelectionChanged: (index) {
+                                              setState(() {
+                                                _selectedTabIndex = index;
+                                                _searchMatchIndex = 0;
+                                              });
+                                            },
                                           ),
                                         ),
                                         IconButton(
-                                          icon: const Icon(Icons.search),
+                                          icon: const Icon(CupertinoIcons.search),
                                           tooltip: '${t(context, 'findInPage.hint')} (⌘F)',
                                           onPressed: _openFindBar,
                                         ),
                                       ],
                                     ),
                                     if (_findBarVisible) ...[
-                                    const SizedBox(height: 8),
-                                    FKFindInPageBar(
-                                      query: _searchQuery,
-                                      onQueryChanged: (q) => setState(() {
-                                        _searchQuery = q;
-                                        _searchMatchIndex = 0;
-                                      }),
-                                      matchIndex: searchMatchCount == 0 ? 0 : searchMatchIndex + 1,
-                                      matchCount: searchMatchCount,
-                                      onPrevious: searchMatchCount > 0
-                                          ? () {
-                                              final prev = (searchMatchIndex - 1 + searchMatchCount) % searchMatchCount;
-                                              setState(() => _searchMatchIndex = prev);
-                                              _scrollToSection(searchMatches[prev]);
-                                            }
-                                          : () {},
-                                      onNext: searchMatchCount > 0
-                                          ? () {
-                                              final next = (searchMatchIndex + 1) % searchMatchCount;
-                                              setState(() => _searchMatchIndex = next);
-                                              _scrollToSection(searchMatches[next]);
-                                            }
-                                          : () {},
-                                      onClose: () => setState(() => _findBarVisible = false),
-                                      hintText: t(context, 'findInPage.hint'),
-                                      previousTooltip: t(context, 'findInPage.previous'),
-                                      nextTooltip: t(context, 'findInPage.next'),
-                                      closeTooltip: t(context, 'findInPage.close'),
-                                      noResultsLabel: t(context, 'findInPage.noResults'),
+                                      const SizedBox(height: 8),
+                                      FKFindInPageBar(
+                                        query: _searchQuery,
+                                        onQueryChanged: (q) => setState(() {
+                                          _searchQuery = q;
+                                          _searchMatchIndex = 0;
+                                        }),
+                                        matchIndex: searchMatchCount == 0 ? 0 : searchMatchIndex + 1,
+                                        matchCount: searchMatchCount,
+                                        onPrevious: searchMatchCount > 0
+                                            ? () {
+                                                final prev =
+                                                    (searchMatchIndex - 1 + searchMatchCount) % searchMatchCount;
+                                                setState(() => _searchMatchIndex = prev);
+                                                _scrollToSection(searchMatches[prev]);
+                                              }
+                                            : () {},
+                                        onNext: searchMatchCount > 0
+                                            ? () {
+                                                final next = (searchMatchIndex + 1) % searchMatchCount;
+                                                setState(() => _searchMatchIndex = next);
+                                                _scrollToSection(searchMatches[next]);
+                                              }
+                                            : () {},
+                                        onClose: () => setState(() => _findBarVisible = false),
+                                        hintText: t(context, 'findInPage.hint'),
+                                        previousTooltip: t(context, 'findInPage.previous'),
+                                        nextTooltip: t(context, 'findInPage.next'),
+                                        closeTooltip: t(context, 'findInPage.close'),
+                                        noResultsLabel: t(context, 'findInPage.noResults'),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 16),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => _panelFocusNode.requestFocus(),
+                                        child: ProjectInfoPanel(
+                                          projectPath: _validatedProjectPath,
+                                          tabIndex: _selectedTabIndex,
+                                          sectionKeys: _sectionKeys,
+                                          highlightSectionIndex: searchMatchCount > 0
+                                              ? searchMatches[searchMatchIndex]
+                                              : -1,
+                                        ),
+                                      ),
                                     ),
                                   ],
-                                  const SizedBox(height: 16),
-                                  Expanded(
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () => _panelFocusNode.requestFocus(),
-                                      child: ProjectInfoPanel(
-                                      projectPath: _validatedProjectPath,
-                                      tabIndex: _selectedTabIndex,
-                                      sectionKeys: _sectionKeys,
-                                      highlightSectionIndex: searchMatchCount > 0
-                                          ? searchMatches[searchMatchIndex]
-                                          : -1,
-                                    ),
-                                    ),
-                                  ),
-                                ],
-                                  ),
                                 ),
                               ),
                             ),
                           ),
+                        ),
                 ),
               ],
             ),
@@ -373,25 +356,13 @@ class _SelectProjectScreenState extends ConsumerState<SelectProjectScreen> {
         _selectedTabIndex = 0;
       });
       ref.read(recentProjectsProvider.notifier).addRecentProject(result.path);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text(t(context, 'selectProject.validProject'))),
-            ],
-          ),
-          backgroundColor: Colors.green.shade700,
-        ),
-      );
     } else {
       ref.read(recentProjectsProvider.notifier).removeRecentProject(result.path);
       messenger.showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.white),
+              const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Colors.white),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -434,47 +405,29 @@ class _RecentProjectsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (recentPaths.isEmpty) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            t(context, 'selectProject.recentProjects'),
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+    return FkExpandableSection(
+      title: t(context, 'selectProject.recentProjects'),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 160),
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: recentPaths.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 4),
+          itemBuilder: (context, index) {
+            final path = recentPaths[index];
+            final name = _displayName(path);
+            return ListTile(
+              dense: true,
+              leading: const Icon(CupertinoIcons.folder, size: 20),
+              title: Text(name, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium),
+              subtitle: path != name
+                  ? Text(path, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall)
+                  : null,
+              onTap: () => onOpenProject(path),
+            );
+          },
         ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 160),
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: recentPaths.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 4),
-            itemBuilder: (context, index) {
-              final path = recentPaths[index];
-              final name = _displayName(path);
-              return ListTile(
-                dense: true,
-                leading: const Icon(Icons.folder_outlined, size: 20),
-                title: Text(
-                  name,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                subtitle: path != name
-                    ? Text(path, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall)
-                    : null,
-                onTap: () => onOpenProject(path),
-              );
-            },
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

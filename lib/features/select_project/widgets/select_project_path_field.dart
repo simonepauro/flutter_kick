@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_kick/core/l10n/translation.dart';
@@ -28,8 +29,10 @@ class SelectProjectPathField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: t(context, 'selectProject.pathFieldHint'),
         border: const OutlineInputBorder(),
-        prefixIcon: const Icon(Icons.folder_outlined),
-        suffixIcon: path.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: onClear) : null,
+        prefixIcon: const Icon(CupertinoIcons.folder),
+        suffixIcon: path.isNotEmpty
+            ? IconButton(icon: const Icon(CupertinoIcons.xmark_circle_fill), onPressed: onClear)
+            : null,
       ),
       onChanged: onChanged,
       onSubmitted: onSubmitted,

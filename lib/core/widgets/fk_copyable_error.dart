@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -33,12 +34,9 @@ class FKCopyableError extends StatelessWidget {
   Future<void> _copyToClipboard(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: message));
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(t(context, 'common.copied')),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(t(context, 'common.copied')), behavior: SnackBarBehavior.floating));
     }
   }
 
@@ -54,14 +52,11 @@ class FKCopyableError extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: SelectableText(
-                message,
-                style: TextStyle(color: errorColor, fontSize: 13),
-              ),
+              child: SelectableText(message, style: TextStyle(color: errorColor, fontSize: 13)),
             ),
             const SizedBox(width: 4),
             IconButton(
-              icon: Icon(Icons.copy, size: 18, color: errorColor),
+              icon: Icon(CupertinoIcons.doc_on_doc, size: 18, color: errorColor),
               onPressed: () => _copyToClipboard(context),
               tooltip: t(context, 'common.copy'),
               style: IconButton.styleFrom(
@@ -82,14 +77,10 @@ class FKCopyableError extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: iconSize, color: errorColor),
+            Icon(CupertinoIcons.exclamationmark_circle, size: iconSize, color: errorColor),
             if (title != null) ...[
               const SizedBox(height: 16),
-              Text(
-                title!,
-                style: theme.textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
+              Text(title!, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
             ],
             const SizedBox(height: 8),
             Row(
@@ -104,16 +95,13 @@ class FKCopyableError extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: Icon(Icons.copy, color: errorColor),
+                  icon: Icon(CupertinoIcons.doc_on_doc, color: errorColor),
                   onPressed: () => _copyToClipboard(context),
                   tooltip: t(context, 'common.copy'),
                 ),
               ],
             ),
-            if (actions.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              ...actions,
-            ],
+            if (actions.isNotEmpty) ...[const SizedBox(height: 24), ...actions],
           ],
         ),
       ),

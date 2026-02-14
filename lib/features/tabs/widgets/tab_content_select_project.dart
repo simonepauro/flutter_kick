@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_kick/features/select_project/constants/select_project_constants.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_kick/features/select_project/widgets/select_project_head
 import 'package:flutter_kick/features/select_project/widgets/select_project_path_field.dart';
 import 'package:flutter_kick/features/select_project/widgets/select_project_use_button.dart';
 import 'package:flutter_kick/core/l10n/translation.dart';
+import 'package:flutter_kick/core/widgets/fk_expandable_section.dart';
 import 'package:flutter_kick/features/flutter_project_detection/flutter_project_detection.dart';
 import 'package:flutter_kick/features/flutter_project_detection/widgets/fk_project_detection_status.dart';
 import 'package:flutter_kick/features/tabs/providers/tabs_provider.dart';
@@ -86,31 +88,18 @@ class _TabContentSelectProjectState extends ConsumerState<TabContentSelectProjec
       if (result.isFlutterProject) {
         notifier.setTabProjectPath(widget.tabId, result.path);
         ref.read(recentProjectsProvider.notifier).addRecentProject(result.path);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(child: Text(t(context, 'selectProject.validProject'))),
-              ],
-            ),
-            backgroundColor: Colors.green.shade700,
-          ),
-        );
       } else {
         ref.read(recentProjectsProvider.notifier).removeRecentProject(trimmed);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Colors.white),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     result.errorMessageKey != null
-                        ? t(context, result.errorMessageKey!,
-                            translationParams: result.errorMessageParams)
+                        ? t(context, result.errorMessageKey!, translationParams: result.errorMessageParams)
                         : (result.errorMessage ?? t(context, 'selectProject.notValidProject')),
                   ),
                 ),
@@ -141,31 +130,18 @@ class _TabContentSelectProjectState extends ConsumerState<TabContentSelectProjec
       if (result.isFlutterProject) {
         notifier.setTabProjectPath(widget.tabId, result.path);
         ref.read(recentProjectsProvider.notifier).addRecentProject(result.path);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(child: Text(t(context, 'selectProject.validProject'))),
-              ],
-            ),
-            backgroundColor: Colors.green.shade700,
-          ),
-        );
       } else {
         ref.read(recentProjectsProvider.notifier).removeRecentProject(path);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Colors.white),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     result.errorMessageKey != null
-                        ? t(context, result.errorMessageKey!,
-                            translationParams: result.errorMessageParams)
+                        ? t(context, result.errorMessageKey!, translationParams: result.errorMessageParams)
                         : (result.errorMessage ?? t(context, 'selectProject.notValidProject')),
                   ),
                 ),
@@ -194,31 +170,18 @@ class _TabContentSelectProjectState extends ConsumerState<TabContentSelectProjec
         if (result.isFlutterProject) {
           notifier.setTabProjectPath(widget.tabId, result.path);
           ref.read(recentProjectsProvider.notifier).addRecentProject(result.path);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(t(context, 'selectProject.validProject'))),
-                ],
-              ),
-              backgroundColor: Colors.green.shade700,
-            ),
-          );
         } else {
           ref.read(recentProjectsProvider.notifier).removeRecentProject(trimmed);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                  const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Colors.white),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       result.errorMessageKey != null
-                          ? t(context, result.errorMessageKey!,
-                              translationParams: result.errorMessageParams)
+                          ? t(context, result.errorMessageKey!, translationParams: result.errorMessageParams)
                           : (result.errorMessage ?? t(context, 'selectProject.notValidProject')),
                     ),
                   ),
@@ -302,10 +265,7 @@ class _TabContentSelectProjectState extends ConsumerState<TabContentSelectProjec
                               onDropDone: onDropDone,
                             ),
                             const SizedBox(height: kSelectProjectFormPadding),
-                            SelectProjectUseButton(
-                              path: projectPath,
-                              onPressed: onPathSubmitted,
-                            ),
+                            SelectProjectUseButton(path: projectPath, onPressed: onPathSubmitted),
                           ],
                         ),
                       );
@@ -322,10 +282,7 @@ class _TabContentSelectProjectState extends ConsumerState<TabContentSelectProjec
 }
 
 class _RecentProjectsSection extends StatelessWidget {
-  const _RecentProjectsSection({
-    required this.recentPaths,
-    required this.onOpenProject,
-  });
+  const _RecentProjectsSection({required this.recentPaths, required this.onOpenProject});
 
   final List<String> recentPaths;
   final void Function(String path) onOpenProject;
@@ -338,47 +295,29 @@ class _RecentProjectsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (recentPaths.isEmpty) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            t(context, 'selectProject.recentProjects'),
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+    return FkExpandableSection(
+      title: t(context, 'selectProject.recentProjects'),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 160),
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: recentPaths.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 4),
+          itemBuilder: (context, index) {
+            final path = recentPaths[index];
+            final name = _displayName(path);
+            return ListTile(
+              dense: true,
+              leading: const Icon(CupertinoIcons.folder, size: 20),
+              title: Text(name, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium),
+              subtitle: path != name
+                  ? Text(path, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall)
+                  : null,
+              onTap: () => onOpenProject(path),
+            );
+          },
         ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 160),
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: recentPaths.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 4),
-            itemBuilder: (context, index) {
-              final path = recentPaths[index];
-              final name = _displayName(path);
-              return ListTile(
-                dense: true,
-                leading: const Icon(Icons.folder_outlined, size: 20),
-                title: Text(
-                  name,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                subtitle: path != name
-                    ? Text(path, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall)
-                    : null,
-                onTap: () => onOpenProject(path),
-              );
-            },
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

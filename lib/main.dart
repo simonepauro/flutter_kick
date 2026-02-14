@@ -1,12 +1,23 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_i18n/loaders/decoders/json_decode_strategy.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:system_fonts/system_fonts.dart';
 import 'package:flutter_kick/features/tabs/screens/tab_shell_screen.dart';
 
-void main() {
-  runApp(const ProviderScope(child: MyApp()));
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  String? systemFontFamily;
+  if (Platform.isMacOS) {
+    // Carica il font di sistema San Francisco (SF Pro) su macOS
+    systemFontFamily = await SystemFonts().loadFontFromPath('/System/Library/Fonts/SFNS.ttf');
+    systemFontFamily ??= await SystemFonts().loadFontFromPath('/System/Library/Fonts/Supplemental/SFNS.ttf');
+    systemFontFamily ??= await SystemFonts().loadFont('SFNS');
+  }
+  runApp(ProviderScope(child: MyApp(systemFontFamily: systemFontFamily)));
 }
 
 /// Colori e tema ispirati alle Human Interface Guidelines Apple (macOS / Xcode).
@@ -14,11 +25,11 @@ class _MacOSTheme {
   _MacOSTheme._();
 
   // System colors (Apple HIG)
-  static const Color systemGray6 = Color(0xFFF2F2F7);   // Content background
-  static const Color systemGray5 = Color(0xFFE5E5EA);   // Toolbar / tab bar
-  static const Color systemGray4 = Color(0xFFD1D1D6);   // Borders
-  static const Color systemGray = Color(0xFF8E8E93);    // Secondary text
-  static const Color systemBlue = Color(0xFF007AFF);    // Accent
+  static const Color systemGray6 = Color(0xFFF2F2F7); // Content background
+  static const Color systemGray5 = Color(0xFFE5E5EA); // Toolbar / tab bar
+  static const Color systemGray4 = Color(0xFFD1D1D6); // Borders
+  static const Color systemGray = Color(0xFF8E8E93); // Secondary text
+  static const Color systemBlue = Color(0xFF007AFF); // Accent
   static const Color white = Color(0xFFFFFFFF);
   static const Color labelPrimary = Color(0xFF000000);
   static const Color labelSecondary = Color(0xFF3C3C43); // 60% opacity black
@@ -51,8 +62,11 @@ class _MacOSTheme {
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
+      // Feedback stile Apple: niente ripple (Material/Google), solo highlight sottile al tocco
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: systemGray4.withOpacity(0.25),
       visualDensity: VisualDensity.adaptivePlatformDensity,
-      // Per un look ancora più “di sistema” su macOS puoi aggiungere il font SF Pro in pubspec.
       fontFamily: null,
       appBarTheme: AppBarTheme(
         elevation: 0,
@@ -61,11 +75,7 @@ class _MacOSTheme {
         backgroundColor: systemGray6,
         foregroundColor: labelPrimary,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: TextStyle(
-          color: labelPrimary,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
+        titleTextStyle: TextStyle(color: labelPrimary, fontSize: 13, fontWeight: FontWeight.w600),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -114,14 +124,11 @@ class _MacOSTheme {
         backgroundColor: fillSecondary,
         side: const BorderSide(color: systemGray4, width: 0.5),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-        labelStyle: const TextStyle(fontSize: 12),
+        labelStyle: const TextStyle(fontSize: 12, color: labelPrimary),
       ),
       dividerTheme: const DividerThemeData(color: systemGray4, thickness: 0.5, space: 1),
       iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(
-          foregroundColor: labelPrimary,
-          minimumSize: const Size(28, 28),
-        ),
+        style: IconButton.styleFrom(foregroundColor: labelPrimary, minimumSize: const Size(28, 28)),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -133,13 +140,19 @@ class _MacOSTheme {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.systemFontFamily});
+
+  final String? systemFontFamily;
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = _MacOSTheme.themeData;
+    final theme = systemFontFamily != null
+        ? baseTheme.copyWith(textTheme: baseTheme.textTheme.apply(fontFamily: systemFontFamily))
+        : baseTheme;
     return MaterialApp(
       title: 'Flutter Kick',
-      theme: _MacOSTheme.themeData,
+      theme: theme,
       localizationsDelegates: [
         FlutterI18nDelegate(
           translationLoader: FileTranslationLoader(

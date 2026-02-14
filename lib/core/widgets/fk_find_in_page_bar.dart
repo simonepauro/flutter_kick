@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -107,20 +108,20 @@ class _FKFindInPageBarState extends State<FKFindInPageBar> {
             ),
             const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.keyboard_arrow_up, size: 20),
+              icon: const Icon(CupertinoIcons.chevron_up, size: 20),
               onPressed: widget.matchCount > 0 ? widget.onPrevious : null,
               tooltip: widget.previousTooltip ?? 'Previous',
               style: IconButton.styleFrom(minimumSize: const Size(32, 32)),
             ),
             IconButton(
-              icon: const Icon(Icons.keyboard_arrow_down, size: 20),
+              icon: const Icon(CupertinoIcons.chevron_down, size: 20),
               onPressed: widget.matchCount > 0 ? widget.onNext : null,
               tooltip: widget.nextTooltip ?? 'Next',
               style: IconButton.styleFrom(minimumSize: const Size(32, 32)),
             ),
             const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.close, size: 18),
+              icon: const Icon(CupertinoIcons.xmark, size: 18),
               onPressed: widget.onClose,
               tooltip: widget.closeTooltip ?? 'Close (Esc)',
               style: IconButton.styleFrom(minimumSize: const Size(32, 32)),
