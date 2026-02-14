@@ -3,7 +3,7 @@ import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_i18n/loaders/decoders/json_decode_strategy.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_kick/features/select_project/screens/select_project_screen.dart';
+import 'package:flutter_kick/features/tabs/screens/tab_shell_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
@@ -64,7 +64,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
       ],
       supportedLocales: const [Locale('it', 'IT'), Locale('en', 'US')],
-      home: const SelectProjectScreen(),
+      home: const TabShellScreen(),
     );
   }
 }

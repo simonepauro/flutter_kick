@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import desktop_multi_window
 
 class MainFlutterWindow: NSWindow {
   private let minWidth: CGFloat = 500
@@ -14,6 +15,10 @@ class MainFlutterWindow: NSWindow {
     minSize = NSSize(width: minWidth, height: minHeight)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+
+    FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
+      RegisterGeneratedPlugins(registry: controller)
+    }
 
     super.awakeFromNib()
   }

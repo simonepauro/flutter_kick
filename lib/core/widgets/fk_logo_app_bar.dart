@@ -4,9 +4,10 @@ import '../constants/assets.dart';
 
 /// AppBar con logo Flutter Kick. Sfondo trasparente per uso su FKScaffold.
 class FKLogoAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const FKLogoAppBar({super.key, this.title});
+  const FKLogoAppBar({super.key, this.title, this.actions});
 
   final String? title;
+  final List<Widget>? actions;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -20,6 +21,7 @@ class FKLogoAppBar extends StatelessWidget implements PreferredSizeWidget {
       surfaceTintColor: Colors.transparent,
       backgroundColor: Colors.transparent,
       title: Image.asset(Assets.flutterKickLogo, height: kToolbarHeight, fit: BoxFit.contain),
+      actions: actions,
     );
   }
 }

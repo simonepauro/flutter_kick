@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_kick/core/l10n/translation.dart';
 import 'package:flutter_kick/core/widgets/fk_copyable_error.dart';
@@ -737,36 +740,275 @@ class _ProjectReleaseTabBody extends StatefulWidget {
   State<_ProjectReleaseTabBody> createState() => _ProjectReleaseTabBodyState();
 }
 
+/// Prefs: JSON map projectPath -> (buildKey -> seconds), e.g. {"path": {"prod:android": 120}}.
+const _prefsKeyLastBuildDurations = 'release_last_build_durations';
+
+/// Formatta una durata in secondi in testo breve (es. "2 min", "45 sec").
+String _formatBuildDuration(int totalSeconds) {
+  if (totalSeconds < 60) return '${totalSeconds} sec';
+  final min = totalSeconds ~/ 60;
+  final sec = totalSeconds % 60;
+  if (sec == 0) return '$min min';
+  return '$min min $sec sec';
+}
+
+/// Formatta secondi in "M:SS" per il timer in corso (es. "1:23").
+String _formatElapsed(int seconds) {
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  return '$m:${s.toString().padLeft(2, '0')}';
+}
+
+/// Risolve l'eseguibile Flutter: FVM nel progetto (.fvm/flutter_sdk/bin/flutter) oppure 'flutter' da PATH.
+Future<String> _resolveFlutterExecutable(String projectPath) async {
+  final fvmFlutter = Platform.isWindows
+      ? File('$projectPath/.fvm/flutter_sdk/bin/flutter.bat')
+      : File('$projectPath/.fvm/flutter_sdk/bin/flutter');
+  if (await fvmFlutter.exists()) return fvmFlutter.path;
+  return 'flutter';
+}
+
+const _platformAndroid = 'android';
+const _platformIos = 'ios';
+
+/// Path dell'artefatto dopo un build riuscito (APK, IPA cartella, o AAB).
+String _builtArtifactPath(String projectPath, String platform, String? flavorArg) {
+  if (platform == _platformAndroid) {
+    final suffix = flavorArg != null ? '-$flavorArg-release.apk' : '-release.apk';
+    return '$projectPath/build/app/outputs/flutter-apk/app$suffix';
+  }
+  // iOS: cartella che contiene l'.ipa
+  return '$projectPath/build/ios/ipa';
+}
+
 class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
-  final Set<String> _runningEnvs = {};
+  /// Keys: 'envName:android' or 'envName:ios'
+  final Set<String> _runningBuilds = {};
+  final Map<String, DateTime> _buildStartTimes = {};
+  final Map<String, int> _elapsedSecondsByKey = {};
+  Timer? _buildTimer;
+  /// Ultima durata build per buildKey (env:platform), persistita in prefs.
+  final Map<String, int> _lastBuildDurationByKey = {};
+  /// Path dell'artefatto (APK o cartella IPA) dopo build riuscita, per chiave envName:platform.
+  final Map<String, String> _lastBuiltArtifactPaths = {};
+  String _consoleOutput = '';
+  final ScrollController _consoleScrollController = ScrollController();
 
   List<String> get _envs => _releaseEnvironmentNames(widget.info);
+  bool get _hasIos => widget.info.platforms.contains(_platformIos);
 
-  Future<void> _runRelease(String envName) async {
-    if (_runningEnvs.contains(envName)) return;
-    setState(() => _runningEnvs.add(envName));
+  String _buildKey(String envName, String platform) => '$envName:$platform';
+  bool _isRunning(String envName, String platform) => _runningBuilds.contains(_buildKey(envName, platform));
+  int? _elapsedFor(String envName, String platform) => _elapsedSecondsByKey[_buildKey(envName, platform)];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastBuildDuration();
+  }
+
+  @override
+  void dispose() {
+    _buildTimer?.cancel();
+    _consoleScrollController.dispose();
+    super.dispose();
+  }
+
+  void _appendConsole(String text) {
+    if (!mounted) return;
+    setState(() => _consoleOutput += text);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_consoleScrollController.hasClients) {
+        _consoleScrollController.animateTo(
+          _consoleScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _clearConsole() {
+    setState(() => _consoleOutput = '');
+  }
+
+  Future<void> _loadLastBuildDuration() async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = prefs.getString(_prefsKeyLastBuildDurations);
+    if (json == null) return;
+    try {
+      final top = jsonDecode(json) as Map<String, dynamic>?;
+      final byKey = top?[widget.projectPath] as Map<String, dynamic>?;
+      if (byKey == null) return;
+      final map = <String, int>{};
+      for (final e in byKey.entries) {
+        final v = e.value;
+        if (v is int) map[e.key] = v;
+      }
+      if (mounted) setState(() => _lastBuildDurationByKey.addAll(map));
+    } catch (_) {}
+  }
+
+  void _startBuildTimer(String buildKey) {
+    _buildStartTimes[buildKey] = DateTime.now();
+    _elapsedSecondsByKey[buildKey] = 0;
+    _buildTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      var changed = false;
+      final now = DateTime.now();
+      for (final key in _runningBuilds) {
+        final start = _buildStartTimes[key];
+        if (start != null) {
+          final elapsed = now.difference(start).inSeconds;
+          if (_elapsedSecondsByKey[key] != elapsed) {
+            _elapsedSecondsByKey[key] = elapsed;
+            changed = true;
+          }
+        }
+      }
+      if (changed) setState(() {});
+    });
+  }
+
+  void _stopBuildTimer(String buildKey) {
+    _buildStartTimes.remove(buildKey);
+    _elapsedSecondsByKey.remove(buildKey);
+    if (_runningBuilds.isEmpty) {
+      _buildTimer?.cancel();
+      _buildTimer = null;
+    }
+  }
+
+  Future<void> _saveLastBuildDuration(String buildKey, int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = prefs.getString(_prefsKeyLastBuildDurations);
+    final top = (json != null ? (jsonDecode(json) as Map<String, dynamic>?) : null) ?? <String, dynamic>{};
+    final byKey = (top[widget.projectPath] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    byKey[buildKey] = seconds;
+    top[widget.projectPath] = byKey;
+    await prefs.setString(_prefsKeyLastBuildDurations, jsonEncode(top));
+  }
+
+  Future<void> _runRelease(String envName, String platform) async {
+    final buildKey = _buildKey(envName, platform);
+    if (_runningBuilds.contains(buildKey)) return;
+
     final hasFlavors = widget.info.androidFlavors.isNotEmpty || widget.info.iosFlavors.isNotEmpty;
     final flavorArg = hasFlavors ? envName.toLowerCase() : null;
+    List<String> args = platform == _platformIos
+        ? ['build', 'ipa', '--release']
+        : ['build', 'apk', '--release'];
+    if (flavorArg != null) args.addAll(['--flavor', flavorArg]);
+    final executable = await _resolveFlutterExecutable(widget.projectPath);
+
+    final String commandDisplay;
+    if (executable == 'flutter') {
+      commandDisplay = 'flutter ${args.join(' ')}';
+    } else {
+      commandDisplay = '$executable ${args.join(' ')}';
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t(context, 'release.confirmTitle')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t(context, 'release.confirmMessage'), style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 12),
+            SelectableText(
+              commandDisplay,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontFamily: 'monospace',
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${t(context, 'release.confirmCwd')}\n${widget.projectPath}',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(t(context, 'release.confirmCancel')),
+          ),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(t(context, 'release.confirmRun'))),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    setState(() {
+      _runningBuilds.add(buildKey);
+      _startBuildTimer(buildKey);
+      _consoleOutput = '';
+    });
+    final stopwatch = Stopwatch()..start();
 
     try {
-      List<String> args = ['build', 'apk', '--release'];
-      if (flavorArg != null) args.addAll(['--flavor', flavorArg]);
-      final result = await Process.run('flutter', args, workingDirectory: widget.projectPath, runInShell: true);
+      final Process process;
+      if (executable == 'flutter') {
+        if (Platform.isMacOS || Platform.isLinux) {
+          final cmd = 'flutter ${args.map((a) => a.contains(' ') ? "'$a'" : a).join(' ')}';
+          process = await Process.start(
+            '/bin/zsh',
+            ['-l', '-c', cmd],
+            workingDirectory: widget.projectPath,
+            runInShell: false,
+          );
+        } else {
+          process = await Process.start('flutter', args, workingDirectory: widget.projectPath, runInShell: true);
+        }
+      } else {
+        process = await Process.start(executable, args, workingDirectory: widget.projectPath, runInShell: false);
+      }
+
+      process.stdout.transform(utf8.decoder).listen((data) => _appendConsole(data));
+      process.stderr.transform(utf8.decoder).listen((data) => _appendConsole(data));
+
+      final exitCode = await process.exitCode;
+      stopwatch.stop();
+      final durationSeconds = stopwatch.elapsed.inSeconds;
 
       if (!mounted) return;
-      setState(() => _runningEnvs.remove(envName));
-      final ok = result.exitCode == 0;
+      setState(() => _runningBuilds.remove(buildKey));
+      _stopBuildTimer(buildKey);
+
+      if (exitCode == 0) {
+        await _saveLastBuildDuration(buildKey, durationSeconds);
+        if (mounted)
+          setState(() {
+            _lastBuildDurationByKey[buildKey] = durationSeconds;
+            _lastBuiltArtifactPaths[buildKey] = _builtArtifactPath(widget.projectPath, platform, flavorArg);
+          });
+      }
+
+      _appendConsole(
+        '\n${exitCode == 0 ? t(context, 'release.done') : t(context, 'release.error')} (exit $exitCode)\n',
+      );
+
+      final ok = exitCode == 0;
+      final platformLabel = platform == _platformIos ? 'iOS' : 'Android';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            ok ? '${t(context, 'release.done')}: $envName' : '${t(context, 'release.error')}: ${result.stderr}',
-          ),
+          content: Text(ok ? '${t(context, 'release.done')}: $envName ($platformLabel)' : '${t(context, 'release.error')}: $envName ($platformLabel)'),
           backgroundColor: ok ? Colors.green.shade700 : Colors.red.shade700,
         ),
       );
     } catch (e) {
+      stopwatch.stop();
+      _appendConsole('\n${t(context, 'release.error')}: $e\n');
       if (mounted) {
-        setState(() => _runningEnvs.remove(envName));
+        setState(() => _runningBuilds.remove(buildKey));
+        _stopBuildTimer(buildKey);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${t(context, 'release.error')}: $e'), backgroundColor: Colors.red.shade700),
         );
@@ -791,53 +1033,248 @@ class _ProjectReleaseTabBodyState extends State<_ProjectReleaseTabBody> {
         ..._envs.map((env) {
           final card = _ReleaseEnvCard(
             envName: env,
-            isLoading: _runningEnvs.contains(env),
-            onRelease: () => _runRelease(env),
+            hasIos: _hasIos,
+            isBuildingAndroid: _isRunning(env, _platformAndroid),
+            isBuildingIos: _isRunning(env, _platformIos),
+            elapsedSecondsAndroid: _elapsedFor(env, _platformAndroid),
+            elapsedSecondsIos: _elapsedFor(env, _platformIos),
+            lastBuildDurationSecondsAndroid: _lastBuildDurationByKey[_buildKey(env, _platformAndroid)],
+            lastBuildDurationSecondsIos: _lastBuildDurationByKey[_buildKey(env, _platformIos)],
+            androidArtifactPath: _lastBuiltArtifactPaths[_buildKey(env, _platformAndroid)],
+            iosArtifactPath: _lastBuiltArtifactPaths[_buildKey(env, _platformIos)],
+            onReleaseAndroid: () => _runRelease(env, _platformAndroid),
+            onReleaseIos: () => _runRelease(env, _platformIos),
           );
           final wrapped = widget.sectionKeys != null && sectionIndex < widget.sectionKeys!.length
               ? KeyedSubtree(key: widget.sectionKeys![sectionIndex++], child: card)
               : card;
           return Padding(padding: const EdgeInsets.only(bottom: 12), child: wrapped);
         }),
+        const SizedBox(height: 16),
+        _ReleaseConsole(
+          output: _consoleOutput,
+          scrollController: _consoleScrollController,
+          isBuilding: _runningBuilds.isNotEmpty,
+          onClear: _clearConsole,
+        ),
       ],
     );
   }
 }
 
 class _ReleaseEnvCard extends StatelessWidget {
-  const _ReleaseEnvCard({required this.envName, required this.isLoading, required this.onRelease});
+  const _ReleaseEnvCard({
+    required this.envName,
+    required this.hasIos,
+    required this.isBuildingAndroid,
+    required this.isBuildingIos,
+    this.elapsedSecondsAndroid,
+    this.elapsedSecondsIos,
+    this.lastBuildDurationSecondsAndroid,
+    this.lastBuildDurationSecondsIos,
+    this.androidArtifactPath,
+    this.iosArtifactPath,
+    required this.onReleaseAndroid,
+    required this.onReleaseIos,
+  });
 
   final String envName;
-  final bool isLoading;
-  final VoidCallback onRelease;
+  final bool hasIos;
+  final bool isBuildingAndroid;
+  final bool isBuildingIos;
+  final int? elapsedSecondsAndroid;
+  final int? elapsedSecondsIos;
+  final int? lastBuildDurationSecondsAndroid;
+  final int? lastBuildDurationSecondsIos;
+  final String? androidArtifactPath;
+  final String? iosArtifactPath;
+  final VoidCallback onReleaseAndroid;
+  final VoidCallback onReleaseIos;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final buildingAndroidLabel = isBuildingAndroid && elapsedSecondsAndroid != null
+        ? t(context, 'release.buildingElapsed', translationParams: {'elapsed': _formatElapsed(elapsedSecondsAndroid!)})
+        : t(context, 'release.building');
+    final buildingIosLabel = isBuildingIos && elapsedSecondsIos != null
+        ? t(context, 'release.buildingElapsed', translationParams: {'elapsed': _formatElapsed(elapsedSecondsIos!)})
+        : t(context, 'release.building');
+    final anyLoading = isBuildingAndroid || isBuildingIos;
+    final hasDurationAndroid = lastBuildDurationSecondsAndroid != null && !anyLoading;
+    final hasDurationIos = lastBuildDurationSecondsIos != null && !anyLoading;
     return Card(
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(envName, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(envName, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                ),
+                FilledButton.icon(
+                  onPressed: isBuildingAndroid ? null : onReleaseAndroid,
+                  icon: isBuildingAndroid
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
+                        )
+                      : const Icon(Icons.android_outlined, size: 20),
+                  label: Text(isBuildingAndroid ? buildingAndroidLabel : t(context, 'release.buildAndroid')),
+                ),
+                if (androidArtifactPath != null && !isBuildingAndroid) ...[
+                  const SizedBox(width: 4),
+                  IconButton.filledTonal(
+                    onPressed: () => revealInFinder(androidArtifactPath!),
+                    icon: const Icon(Icons.folder_open, size: 20),
+                    tooltip: t(context, 'release.showInFinder'),
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(40, 40),
+                    ),
+                  ),
+                ],
+                if (hasIos) ...[
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: isBuildingIos ? null : onReleaseIos,
+                    icon: isBuildingIos
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
+                          )
+                        : const Icon(Icons.apple, size: 20),
+                    label: Text(isBuildingIos ? buildingIosLabel : t(context, 'release.buildIos')),
+                  ),
+                  if (iosArtifactPath != null && !isBuildingIos) ...[
+                    const SizedBox(width: 4),
+                    IconButton.filledTonal(
+                      onPressed: () => revealInFinder(iosArtifactPath!),
+                      icon: const Icon(Icons.folder_open, size: 20),
+                      tooltip: t(context, 'release.showInFinder'),
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(40, 40),
+                      ),
+                    ),
+                  ],
+                ],
+              ],
             ),
-            FilledButton.icon(
-              onPressed: isLoading ? null : onRelease,
-              icon: isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
-                    )
-                  : const Icon(Icons.rocket_launch_outlined, size: 20),
-              label: Text(isLoading ? t(context, 'release.building') : t(context, 'release.buildButton')),
-            ),
+            if (hasDurationAndroid || hasDurationIos)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 2,
+                  children: [
+                    if (hasDurationAndroid)
+                      Text(
+                        t(
+                          context,
+                          'release.lastBuildTimeWithPlatform',
+                          translationParams: {
+                            'platform': t(context, 'release.platformAndroid'),
+                            'duration': _formatBuildDuration(lastBuildDurationSecondsAndroid!),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    if (hasDurationIos)
+                      Text(
+                        t(
+                          context,
+                          'release.lastBuildTimeWithPlatform',
+                          translationParams: {
+                            'platform': t(context, 'release.platformIos'),
+                            'duration': _formatBuildDuration(lastBuildDurationSecondsIos!),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Mini console che mostra l'output del comando di build in tempo reale.
+class _ReleaseConsole extends StatelessWidget {
+  const _ReleaseConsole({
+    required this.output,
+    required this.scrollController,
+    required this.isBuilding,
+    required this.onClear,
+  });
+
+  final String output;
+  final ScrollController scrollController;
+  final bool isBuilding;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const consoleHeight = 220.0;
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFF2D2D2D);
+    final textColor = isDark ? const Color(0xFFD4D4D4) : const Color(0xFFE0E0E0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                t(context, 'release.consoleTitle'),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (!isBuilding && output.isNotEmpty)
+              TextButton.icon(
+                onPressed: onClear,
+                icon: const Icon(Icons.clear_all, size: 18),
+                label: Text(t(context, 'release.consoleClear')),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: consoleHeight,
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(12),
+            child: SelectableText(
+              output.isEmpty ? t(context, 'release.consolePlaceholder') : output,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                height: 1.4,
+                color: output.isEmpty ? textColor.withOpacity(0.6) : textColor,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

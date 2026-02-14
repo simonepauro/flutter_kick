@@ -1,6 +1,9 @@
 {
   "app": {
-    "title": "Flutter Kick"
+    "title": "Flutter Kick",
+    "newWindow": "Nuova finestra",
+    "newTab": "Nuova scheda",
+    "tabNew": "Nuovo"
   },
   "common": {
     "copy": "Copia",
@@ -90,9 +93,25 @@
     "buildSettingsAndroid": "Impostazioni Gradle Android"
   },
   "release": {
-    "tabDescription": "Compila e rilascia l'app per ogni ambiente. Usa il pulsante sotto per eseguire una build di release (APK) per quell'ambiente.",
+    "tabDescription": "Compila e rilascia l'app per ogni ambiente. Usa i pulsanti sotto per eseguire una build di release (APK o iOS) per quell'ambiente.",
     "buildButton": "Build release",
+    "buildAndroid": "Build Android (APK)",
+    "buildIos": "Build iOS (IPA)",
     "building": "Build in corso…",
+    "buildingElapsed": "Build in corso… {elapsed}",
+    "lastBuildTime": "L'ultima volta ci ha messo {duration}",
+    "lastBuildTimeWithPlatform": "Ultima build {platform}: {duration}",
+    "platformAndroid": "Android",
+    "platformIos": "iOS",
+    "consoleTitle": "Output",
+    "consoleClear": "Svuota",
+    "consolePlaceholder": "L'output del build apparirà qui…",
+    "confirmTitle": "Conferma build",
+    "confirmMessage": "Esegui il seguente comando:",
+    "confirmCwd": "Cartella di lavoro:",
+    "confirmRun": "Esegui",
+    "confirmCancel": "Annulla",
+    "showInFinder": "Apri nel Finder",
     "done": "Build completata",
     "error": "Build fallita"
   },
