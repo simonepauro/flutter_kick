@@ -1,3 +1,86 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
 
-# FVM Version Cache
+# IDE related
+*.iml
+.idea/
+
+!.vscode/  # Permetti alla cartella .vscode di essere inclusa
+!.vscode/tasks.json
+!.vscode/launch.json
+.vscode/*  # Ignora tutto all'interno di .vscode, tranne le eccezioni sopra
+
+# Flutter/Dart/Pub related
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+lib/generated_plugin_registrant.dart
+
+# Symbolication & Obfuscation related
+app.*.symbols
+app.*.map.json
+
+# Android related
+android/.cxx/
+android/build/
+android/app/development/
+android/app/staging/
+android/app/production/
+
+# iOS/macOS related
+ios/.symlinks/
+ios/Pods/
+ios/build/
+ios/.dart_tool/
+*.xcuserstate
+
+# Versioniamo i file importanti di Xcode
+!ios/Runner.xcodeproj/
+!ios/Runner.xcworkspace/
+!ios/Flutter/*.xcconfig
+!ios/Runner/Assets.xcassets/
+
+# Debug logs
+*.crash
+*.rej
+*.orig
+
+# Freezed & generated files
+*.freezed.dart
+*.g.dart
+
+# FVM related
 .fvm/
+
+# Mabiloft Added
+.vscode/settings.json
+
+# Fastlane
+android/fastlane/report.xml
+android/fastlane/screenshots/**/*.png
+android/fastlane/metadata/android/*/changelogs/*.txt
+android/fastlane/tmp/
+android/fastlane/test_output/
+android/fastlane/preview.html
+android/fastlane/*.html
+android/fastlane/*.log
+android/fastlane/*.json
+
+ios/fastlane/report.xml
+ios/fastlane/screenshots/**/*.png
+ios/fastlane/metadata/android/*/changelogs/*.txt
+ios/fastlane/tmp/
+ios/fastlane/test_output/
+ios/fastlane/preview.html
+ios/fastlane/*.html
+ios/fastlane/*.log
+ios/fastlane/*.p8
+.vscode/settings.json
