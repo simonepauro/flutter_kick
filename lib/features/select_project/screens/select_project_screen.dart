@@ -26,6 +26,7 @@ class _SelectProjectScreenState extends ConsumerState<SelectProjectScreen> {
   final TextEditingController _pathController = TextEditingController();
   final FocusNode _pathFocusNode = FocusNode();
   bool _isDragging = false;
+
   /// Set when user submits a valid Flutter project path; drives segmented control + panel.
   String _validatedProjectPath = '';
   int _selectedTabIndex = 0;
@@ -93,88 +94,115 @@ class _SelectProjectScreenState extends ConsumerState<SelectProjectScreen> {
 
     return FKScaffold(
       appBar: FKLogoAppBar(title: widget.title ?? t(context, 'app.title')),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(kSelectProjectFormPadding),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: kSelectProjectFormMaxWidth),
-                child: SelectProjectPathField(
-                  controller: _pathController,
-                  focusNode: _pathFocusNode,
-                  path: projectPath,
-                  onChanged: notifier.setPath,
-                  onSubmitted: onPathSubmitted,
-                  onClear: () {
-                    _pathController.clear();
-                    notifier.setPath('');
-                    setState(() => _validatedProjectPath = '');
-                  },
+      body: DropTarget(
+        onDragDone: onDropDone,
+        onDragEntered: (_) => setState(() => _isDragging = true),
+        onDragExited: (_) => setState(() => _isDragging = false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(kSelectProjectFormPadding),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: kSelectProjectFormMaxWidth),
+                  child: SelectProjectPathField(
+                    controller: _pathController,
+                    focusNode: _pathFocusNode,
+                    path: projectPath,
+                    onChanged: notifier.setPath,
+                    onSubmitted: onPathSubmitted,
+                    onClear: () {
+                      _pathController.clear();
+                      notifier.setPath('');
+                      setState(() => _validatedProjectPath = '');
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-          Expanded(
-            child: _validatedProjectPath.isEmpty
-                ? Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: kSelectProjectFormMaxWidth),
-                      child: Padding(
-                        padding: const EdgeInsets.all(kSelectProjectFormPadding),
-                        child: Container(
-                          decoration: cardDecoration,
-                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+            Expanded(
+              child: _validatedProjectPath.isEmpty
+                  ? Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: kSelectProjectFormMaxWidth),
+                        child: Padding(
+                          padding: const EdgeInsets.all(kSelectProjectFormPadding),
+                          child: Container(
+                            decoration: cardDecoration,
+                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SelectProjectHeader(),
+                                const SizedBox(height: kSelectProjectFormPadding),
+                                FKProjectDetectionStatus(projectPath: projectPath),
+                                const SizedBox(height: 16),
+                                SelectProjectDropZone(
+                                  isDragging: _isDragging,
+                                  onDragEntered: () => setState(() => _isDragging = true),
+                                  onDragExited: () => setState(() => _isDragging = false),
+                                  onDropDone: onDropDone,
+                                ),
+                                const SizedBox(height: kSelectProjectFormPadding),
+                                SelectProjectUseButton(path: projectPath, onPressed: onPathSubmitted),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: kSelectProjectFormPadding),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: kSelectProjectFormMaxWidth),
                           child: Column(
-                            mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const SelectProjectHeader(),
-                              const SizedBox(height: kSelectProjectFormPadding),
-                              FKProjectDetectionStatus(projectPath: projectPath),
-                              const SizedBox(height: 16),
-                              SelectProjectDropZone(
-                                isDragging: _isDragging,
-                                onDragEntered: () => setState(() => _isDragging = true),
-                                onDragExited: () => setState(() => _isDragging = false),
-                                onDropDone: onDropDone,
+                              SegmentedButton<int>(
+                                segments: [
+                                  ButtonSegment(
+                                    value: 0,
+                                    label: Text(t(context, 'projectInfo.tabInfo')),
+                                    icon: const Icon(Icons.info_outline),
+                                  ),
+                                  ButtonSegment(
+                                    value: 1,
+                                    label: Text(t(context, 'projectInfo.tabEnv')),
+                                    icon: const Icon(Icons.cloud_outlined),
+                                  ),
+                                  ButtonSegment(
+                                    value: 2,
+                                    label: Text(t(context, 'projectInfo.tabIcons')),
+                                    icon: const Icon(Icons.image_outlined),
+                                  ),
+                                  ButtonSegment(
+                                    value: 3,
+                                    label: Text(t(context, 'projectInfo.tabSigning')),
+                                    icon: const Icon(Icons.badge_outlined),
+                                  ),
+                                ],
+                                selected: {_selectedTabIndex},
+                                onSelectionChanged: (Set<int> selected) =>
+                                    setState(() => _selectedTabIndex = selected.first),
                               ),
-                              const SizedBox(height: kSelectProjectFormPadding),
-                              SelectProjectUseButton(path: projectPath, onPressed: onPathSubmitted),
+                              const SizedBox(height: 16),
+                              Expanded(
+                                child: ProjectInfoPanel(
+                                  projectPath: _validatedProjectPath,
+                                  tabIndex: _selectedTabIndex,
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       ),
                     ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: kSelectProjectFormPadding),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: kSelectProjectFormMaxWidth),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            SegmentedButton<int>(
-                              segments: [
-                                ButtonSegment(value: 0, label: Text(t(context, 'projectInfo.tabInfo')), icon: const Icon(Icons.info_outline)),
-                                ButtonSegment(value: 1, label: Text(t(context, 'projectInfo.tabEnv')), icon: const Icon(Icons.cloud_outlined)),
-                              ],
-                              selected: {_selectedTabIndex},
-                              onSelectionChanged: (Set<int> selected) => setState(() => _selectedTabIndex = selected.first),
-                            ),
-                            const SizedBox(height: 16),
-                            Expanded(
-                              child: ProjectInfoPanel(projectPath: _validatedProjectPath, tabIndex: _selectedTabIndex),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

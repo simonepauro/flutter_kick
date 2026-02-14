@@ -30,9 +30,14 @@
     "readError": "Impossibile leggere pubspec.yaml: {message}"
   },
   "projectInfo": {
-    "title": "Info progetto",
-    "tabInfo": "Info progetto",
+    "title": "Info",
+    "tabInfo": "Info",
     "tabEnv": "Environment",
+    "tabIcons": "Icone app",
+    "tabSigning": "Firma",
+    "signingIos": "Code signing iOS",
+    "signingAndroid": "Signing Android",
+    "noSigningConfig": "Nessuna configurazione di firma rilevata",
     "back": "Indietro",
     "loadError": "Impossibile caricare le info",
     "project": "Progetto",
@@ -41,6 +46,7 @@
     "version": "Versione",
     "publishTo": "Publish to",
     "environment": "Environment",
+    "flutter": "Flutter",
     "sdk": "SDK",
     "envFiles": "Env (.env)",
     "envAndroid": "Env Android",
@@ -64,7 +70,15 @@
     "updateAvailable": "Aggiornamento disponibile",
     "devDependenciesCount": "Dev dipendenze ({count})",
     "noDevDependencies": "Nessuna dev dipendenza",
-    "path": "Percorso"
+    "path": "Percorso",
+    "appIcons": "Icone app",
+    "iosIcon": "iOS",
+    "androidIcon": "Android",
+    "noAppIcons": "Nessuna icona app trovata (iOS o Android)",
+    "splashScreen": "Splash screen",
+    "showInFinder": "Mostra nel Finder",
+    "buildSettingsIos": "Build settings iOS",
+    "buildSettingsAndroid": "Impostazioni Gradle Android"
   },
   "projectInfoProvider": {
     "pathEmpty": "projectPath non può essere vuoto"

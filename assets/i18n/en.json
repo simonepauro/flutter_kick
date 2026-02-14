@@ -33,6 +33,11 @@
     "title": "Project info",
     "tabInfo": "Project info",
     "tabEnv": "Environment",
+    "tabIcons": "App icons",
+    "tabSigning": "Signing",
+    "signingIos": "iOS code signing",
+    "signingAndroid": "Android signing",
+    "noSigningConfig": "No signing configuration detected",
     "back": "Back",
     "loadError": "Unable to load info",
     "project": "Project",
@@ -41,6 +46,7 @@
     "version": "Version",
     "publishTo": "Publish to",
     "environment": "Environment",
+    "flutter": "Flutter",
     "sdk": "SDK",
     "envFiles": "Env (.env)",
     "envAndroid": "Env Android",
@@ -64,7 +70,15 @@
     "updateAvailable": "Update available",
     "devDependenciesCount": "Dev dependencies ({count})",
     "noDevDependencies": "No dev dependencies",
-    "path": "Path"
+    "path": "Path",
+    "appIcons": "App icons",
+    "iosIcon": "iOS",
+    "androidIcon": "Android",
+    "noAppIcons": "No app icons found (iOS or Android)",
+    "splashScreen": "Splash screen",
+    "showInFinder": "Show in Finder",
+    "buildSettingsIos": "iOS build settings",
+    "buildSettingsAndroid": "Android Gradle settings"
   },
   "projectInfoProvider": {
     "pathEmpty": "projectPath cannot be empty"

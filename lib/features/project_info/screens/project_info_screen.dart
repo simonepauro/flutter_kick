@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,8 +11,22 @@ import '../models/dependency_info.dart';
 import '../models/flutter_project_info.dart';
 import '../providers/project_info_provider.dart';
 
-/// Panel to embed in a parent screen: shows project info or env tab content.
-/// Use with [projectPath] and [tabIndex]: 0 = Project info, 1 = Environment.
+/// Apre il file nel file manager di sistema (Finder su macOS, Explorer su Windows, ecc.).
+Future<void> revealInFinder(String path) async {
+  final file = File(path);
+  if (!file.existsSync()) return;
+  if (Platform.isMacOS) {
+    await Process.run('open', ['-R', path]);
+  } else if (Platform.isWindows) {
+    await Process.run('explorer', ['/select,', path]);
+  } else {
+    final dir = File(path).parent.path;
+    await Process.run('xdg-open', [dir]);
+  }
+}
+
+/// Panel to embed in a parent screen: shows project info, env, app icons or signing tab content.
+/// Use with [projectPath] and [tabIndex]: 0 = Project info, 1 = Environment, 2 = App icons, 3 = Signing.
 class ProjectInfoPanel extends ConsumerWidget {
   const ProjectInfoPanel({super.key, required this.projectPath, required this.tabIndex});
 
@@ -21,14 +37,14 @@ class ProjectInfoPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncInfo = ref.watch(projectInfoProvider(projectPath));
     return asyncInfo.when(
-      data: (info) => tabIndex == 0
-          ? _ProjectInfoTabBody(projectPath: projectPath, info: info)
-          : _ProjectEnvTabBody(projectPath: projectPath, info: info),
+      data: (info) {
+        if (tabIndex == 0) return _ProjectInfoTabBody(projectPath: projectPath, info: info);
+        if (tabIndex == 1) return _ProjectEnvTabBody(projectPath: projectPath, info: info);
+        if (tabIndex == 2) return _ProjectAppIconsTabBody(info: info);
+        return _ProjectSigningTabBody(info: info);
+      },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, _) => FKCopyableError(
-        message: err.toString(),
-        title: t(context, 'projectInfo.loadError'),
-      ),
+      error: (err, _) => FKCopyableError(message: err.toString(), title: t(context, 'projectInfo.loadError')),
     );
   }
 }
@@ -58,7 +74,11 @@ class _ProjectInfoTabBody extends ConsumerWidget {
         const SizedBox(height: 12),
         _SectionCard(
           title: t(context, 'projectInfo.environment'),
-          children: [if (info.sdkConstraint != null) _InfoRow(label: t(context, 'projectInfo.sdk'), value: info.sdkConstraint!)],
+          children: [
+            if (info.flutterVersion != null)
+              _InfoRow(label: t(context, 'projectInfo.flutter'), value: info.flutterVersion!),
+            if (info.sdkConstraint != null) _InfoRow(label: t(context, 'projectInfo.sdk'), value: info.sdkConstraint!),
+          ],
         ),
         const SizedBox(height: 12),
         _SectionCard(
@@ -83,23 +103,31 @@ class _ProjectInfoTabBody extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         _SectionCard(
-          title: t(context, 'projectInfo.dependenciesCount', translationParams: {'count': '${info.dependencies.length}'}),
+          title: t(
+            context,
+            'projectInfo.dependenciesCount',
+            translationParams: {'count': '${info.dependencies.length}'},
+          ),
           child: info.dependencies.isEmpty
-              ? Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(t(context, 'projectInfo.noDependencies')))
-              : _DependencyList(
-                  projectPath: projectPath,
-                  dependencies: info.dependencies,
-                ),
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(t(context, 'projectInfo.noDependencies')),
+                )
+              : _DependencyList(projectPath: projectPath, dependencies: info.dependencies),
         ),
         const SizedBox(height: 12),
         _SectionCard(
-          title: t(context, 'projectInfo.devDependenciesCount', translationParams: {'count': '${info.devDependencies.length}'}),
+          title: t(
+            context,
+            'projectInfo.devDependenciesCount',
+            translationParams: {'count': '${info.devDependencies.length}'},
+          ),
           child: info.devDependencies.isEmpty
-              ? Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(t(context, 'projectInfo.noDevDependencies')))
-              : _DependencyList(
-                  projectPath: projectPath,
-                  dependencies: info.devDependencies,
-                ),
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(t(context, 'projectInfo.noDevDependencies')),
+                )
+              : _DependencyList(projectPath: projectPath, dependencies: info.devDependencies),
         ),
         const SizedBox(height: 12),
         _SectionCard(
@@ -112,8 +140,50 @@ class _ProjectInfoTabBody extends ConsumerWidget {
             ),
           ),
         ),
+        if (info.platforms.contains('ios') && info.iosBuildSettings.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: t(context, 'projectInfo.buildSettingsIos'),
+            children: _buildSettingsEntries(context, info.iosBuildSettings),
+          ),
+        ],
+        if (info.platforms.contains('android') && info.androidGradleSettings.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: t(context, 'projectInfo.buildSettingsAndroid'),
+            children: _buildSettingsEntries(context, info.androidGradleSettings),
+          ),
+        ],
       ],
     );
+  }
+
+  List<Widget> _buildSettingsEntries(BuildContext context, Map<String, String> settings) {
+    final keys = settings.keys.toList()..sort();
+    return keys.map((k) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 220,
+              child: SelectableText(
+                k,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            Expanded(
+              child: SelectableText(settings[k]!, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            ),
+          ],
+        ),
+      );
+    }).toList();
   }
 
   IconData _platformIcon(String platform) {
@@ -204,7 +274,11 @@ class _ProjectEnvTabBody extends StatelessWidget {
                       .map(
                         (f) => Chip(
                           label: Text(f),
-                          avatar: Icon(Icons.description_outlined, size: 18, color: Theme.of(context).colorScheme.onSurface),
+                          avatar: Icon(
+                            Icons.description_outlined,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
                       )
                       .toList(),
@@ -225,7 +299,11 @@ class _ProjectEnvTabBody extends StatelessWidget {
                       .map(
                         (f) => Chip(
                           label: Text(f),
-                          avatar: Icon(Icons.description_outlined, size: 18, color: Theme.of(context).colorScheme.onSurface),
+                          avatar: Icon(
+                            Icons.description_outlined,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
                       )
                       .toList(),
@@ -320,6 +398,170 @@ class _ProjectEnvTabBody extends StatelessWidget {
   }
 }
 
+/// Tab "Signing": come viene firmata l'app su iOS e Android (code signing / signing config).
+class _ProjectSigningTabBody extends StatelessWidget {
+  const _ProjectSigningTabBody({required this.info});
+
+  final FlutterProjectInfo info;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasIos = info.platforms.contains('ios');
+    final hasAndroid = info.platforms.contains('android');
+    final iosEmpty = info.iosSigningSettings.isEmpty;
+    final androidEmpty = info.androidSigningSettings.isEmpty;
+    if (!hasIos && !hasAndroid) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            t(context, 'projectInfo.noPlatforms'),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    if (hasIos && hasAndroid && iosEmpty && androidEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            t(context, 'projectInfo.noSigningConfig'),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (hasIos) ...[
+          _SectionCard(
+            title: t(context, 'projectInfo.signingIos'),
+            children: iosEmpty
+                ? [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(t(context, 'projectInfo.noSigningConfig')),
+                    ),
+                  ]
+                : (info.iosSigningSettings.keys.toList()..sort())
+                      .map((k) => _InfoRow(label: k, value: info.iosSigningSettings[k]!))
+                      .toList(),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (hasAndroid) ...[
+          _SectionCard(
+            title: t(context, 'projectInfo.signingAndroid'),
+            children: androidEmpty
+                ? [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(t(context, 'projectInfo.noSigningConfig')),
+                    ),
+                  ]
+                : (info.androidSigningSettings.keys.toList()..sort())
+                      .map((k) => _InfoRow(label: k, value: info.androidSigningSettings[k]!))
+                      .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Tab "App icons": icone app e splash screen per iOS e Android.
+class _ProjectAppIconsTabBody extends StatelessWidget {
+  const _ProjectAppIconsTabBody({required this.info});
+
+  final FlutterProjectInfo info;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAnyIcon = info.iosAppIconPath != null || info.androidAppIconPath != null;
+    final hasAnySplash = info.iosSplashPath != null || info.androidSplashPath != null;
+    if (!hasAnyIcon && !hasAnySplash) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            t(context, 'projectInfo.noAppIcons'),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _SectionCard(
+          title: t(context, 'projectInfo.appIcons'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AppIconTile(
+                    platformLabel: t(context, 'projectInfo.iosIcon'),
+                    iconPath: info.iosAppIconPath,
+                    iconData: Icons.apple,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _AppIconTile(
+                    platformLabel: t(context, 'projectInfo.androidIcon'),
+                    iconPath: info.androidAppIconPath,
+                    iconData: Icons.android,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _SectionCard(
+          title: t(context, 'projectInfo.splashScreen'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AppIconTile(
+                    platformLabel: t(context, 'projectInfo.iosIcon'),
+                    iconPath: info.iosSplashPath,
+                    iconData: Icons.apple,
+                    size: 120,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _AppIconTile(
+                    platformLabel: t(context, 'projectInfo.androidIcon'),
+                    iconPath: info.androidSplashPath,
+                    iconData: Icons.android,
+                    size: 120,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Full-screen wrapper (kept for compatibility; prefer embedding [ProjectInfoPanel] with segmented control).
 class ProjectInfoScreen extends ConsumerWidget {
   const ProjectInfoScreen({super.key, required this.projectPath});
@@ -339,11 +581,55 @@ class ProjectInfoScreen extends ConsumerWidget {
   }
 }
 
+class _AppIconTile extends StatelessWidget {
+  const _AppIconTile({required this.platformLabel, required this.iconPath, required this.iconData, this.size = 80});
+
+  final String platformLabel;
+  final String? iconPath;
+  final IconData iconData;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPath = iconPath != null && File(iconPath!).existsSync();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          platformLabel,
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: hasPath
+              ? Image.file(File(iconPath!), fit: BoxFit.contain)
+              : Icon(iconData, size: size * 0.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+        if (hasPath && iconPath != null) ...[
+          const SizedBox(height: 8),
+          FilledButton.tonalIcon(
+            onPressed: () => revealInFinder(iconPath!),
+            icon: const Icon(Icons.folder_open, size: 18),
+            label: Text(t(context, 'projectInfo.showInFinder')),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _DependencyList extends ConsumerWidget {
-  const _DependencyList({
-    required this.projectPath,
-    required this.dependencies,
-  });
+  const _DependencyList({required this.projectPath, required this.dependencies});
 
   final String projectPath;
   final List<DependencyInfo> dependencies;
@@ -379,8 +665,8 @@ class _DependencyList extends ConsumerWidget {
                                 color: isDeprecated
                                     ? Theme.of(context).colorScheme.error
                                     : hasUpdate
-                                        ? Theme.of(context).colorScheme.tertiary
-                                        : null,
+                                    ? Theme.of(context).colorScheme.tertiary
+                                    : null,
                                 decoration: isDeprecated ? TextDecoration.lineThrough : null,
                               ),
                             ),
@@ -432,10 +718,7 @@ class _StatusChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -479,15 +762,14 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
+          SizedBox(width: 16),
+
           Expanded(child: SelectableText(value)),
         ],
       ),
