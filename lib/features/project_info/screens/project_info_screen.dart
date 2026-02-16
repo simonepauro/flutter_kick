@@ -11,6 +11,7 @@ import 'package:flutter_kick/core/l10n/translation.dart';
 import 'package:flutter_kick/core/widgets/fk_copyable_error.dart';
 import 'package:flutter_kick/core/widgets/fk_expandable_section.dart';
 import 'package:flutter_kick/core/widgets/fk_scaffold.dart';
+import 'package:flutter_kick/features/apple_developer/widgets/apple_developer_section.dart';
 
 import '../models/dependency_info.dart';
 import '../models/flutter_project_info.dart';
@@ -222,7 +223,7 @@ Widget _buildFontsSectionWidget(BuildContext context, FlutterProjectInfo info) {
 }
 
 List<String> _sectionTextsTabSigning(FlutterProjectInfo info) {
-  final list = <String>[];
+  final list = <String>['Apple Developer'];
   if (info.platforms.contains('ios')) {
     list.add(info.iosSigningSettings.entries.map((e) => '${e.key} ${e.value}').join(' '));
   }
@@ -294,6 +295,7 @@ class ProjectInfoPanel extends ConsumerWidget {
           );
         }
         return _ProjectSigningTabBody(
+          projectPath: projectPath,
           info: info,
           sectionKeys: sectionKeys,
           highlightSectionIndex: highlightSectionIndex,
@@ -1441,7 +1443,8 @@ class _ReleaseEnvCard extends StatelessWidget {
 }
 
 /// Mini console che mostra l'output del comando di build in tempo reale (una per buildKey).
-class _ReleaseConsole extends StatelessWidget {
+/// Lo scroll viene tenuto sempre in fondo per mostrare l'ultimo output.
+class _ReleaseConsole extends StatefulWidget {
   const _ReleaseConsole({
     required this.title,
     required this.output,
@@ -1457,12 +1460,35 @@ class _ReleaseConsole extends StatelessWidget {
   final VoidCallback onClear;
 
   @override
+  State<_ReleaseConsole> createState() => _ReleaseConsoleState();
+}
+
+class _ReleaseConsoleState extends State<_ReleaseConsole> {
+  @override
+  void didUpdateWidget(covariant _ReleaseConsole oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.output != widget.output) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final c = widget.scrollController;
+        if (c.hasClients) {
+          c.jumpTo(c.position.maxScrollExtent);
+        }
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const consoleHeight = 220.0;
     final isDark = theme.brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFF2D2D2D);
     final textColor = isDark ? const Color(0xFFD4D4D4) : const Color(0xFFE0E0E0);
+    final output = widget.output;
+    final scrollController = widget.scrollController;
+    final isBuilding = widget.isBuilding;
+    final onClear = widget.onClear;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1471,7 +1497,7 @@ class _ReleaseConsole extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                title,
+                widget.title,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: theme.colorScheme.onSurfaceVariant,
@@ -1525,8 +1551,14 @@ class _ReleaseConsole extends StatelessWidget {
 
 /// Tab "Signing": come viene firmata l'app su iOS e Android (code signing / signing config).
 class _ProjectSigningTabBody extends StatelessWidget {
-  const _ProjectSigningTabBody({required this.info, this.sectionKeys, this.highlightSectionIndex = -1});
+  const _ProjectSigningTabBody({
+    required this.projectPath,
+    required this.info,
+    this.sectionKeys,
+    this.highlightSectionIndex = -1,
+  });
 
+  final String projectPath;
   final FlutterProjectInfo info;
   final List<GlobalKey>? sectionKeys;
   final int highlightSectionIndex;
@@ -1569,15 +1601,14 @@ class _ProjectSigningTabBody extends StatelessWidget {
         ),
       );
     }
-    if (hasIos && hasAndroid && iosEmpty && androidEmpty) {
+    // Con iOS mostriamo sempre la lista (per la sezione Account Apple Developer). Solo senza iOS e senza/solo Android vuoto: messaggio centrale.
+    if (!hasIos && (!hasAndroid || androidEmpty)) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            t(context, 'projectInfo.noSigningConfig'),
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            !hasAndroid ? t(context, 'projectInfo.noPlatforms') : t(context, 'projectInfo.noSigningConfig'),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
             textAlign: TextAlign.center,
           ),
         ),
@@ -1588,6 +1619,17 @@ class _ProjectSigningTabBody extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         if (hasIos) ...[
+          _wrapSection(
+            context,
+            AppleDeveloperSection(
+              projectPath: projectPath,
+              highlightSection: highlightSectionIndex == sectionIndex,
+              projectTeamId: info.iosSigningSettings['DEVELOPMENT_TEAM'],
+              projectAppIdentifier: info.iosBuildSettings['PRODUCT_BUNDLE_IDENTIFIER'],
+            ),
+            sectionIndex++,
+          ),
+          const SizedBox(height: 12),
           _wrapSection(
             context,
             FkExpandableSection(
